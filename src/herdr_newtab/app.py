@@ -18,11 +18,11 @@ import time
 from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from . import paths, render
-from .agents import Agent, initial_index
+from .agents import Agent, can_skip_permissions, initial_index
 from .config import Config
 from .keys import KEY, MOUSE, PASTE, PRESS, TEXT, WHEEL_DOWN, WHEEL_UP, Event, KeyDecoder
 from .paint import Painter
-from .session import Target, normalize, resolve_target
+from .session import Target, next_mode, normalize, resolve_target
 from .state import Recents
 from .term import Terminal
 from .theme import Theme
@@ -40,6 +40,7 @@ class Choice(NamedTuple):
     folder: str
     agent: Agent
     target: Target
+    skip_permissions: bool = False
 
 
 class Picker(object):
@@ -68,6 +69,20 @@ class Picker(object):
         self.offset = 0
         self.chip = initial_index(self.chips, config.default_agent, recents.last_agent())
         self._chip_pinned = False
+        # Where Enter lands: the automatic decision, or one of the two overrides.
+        # Unlike the agent this is one setting for the whole picker, and it
+        # outlives the popup -- the toggle is how you say you would rather have
+        # tabs than spaces, and saying it once should be enough.
+        self.create_mode = recents.create_mode() or config.create
+        # Deliberately not remembered per folder the way the agent is. Starting
+        # an agent without its permission prompts is a decision about this run,
+        # and a folder that quietly kept the setting for weeks would be one you
+        # could only discover by reading the chip row.
+        self.skip_permissions = False
+
+        # The panel takes the whole popup while it is up: at 12 rows there is no
+        # room to explain anything beside the thing being explained.
+        self.help = False
 
         self.status: Optional[str] = None
         self.status_until = 0.0
@@ -115,6 +130,36 @@ class Picker(object):
     def agent(self) -> Agent:
         return self.chips[min(self.chip, len(self.chips) - 1)]
 
+    def can_skip(self) -> bool:
+        """Whether the selected agent has a known way to skip its prompts."""
+        return can_skip_permissions(self.agent().kind, self.config.skip_permission_flags)
+
+    def skipping(self) -> bool:
+        """Whether Enter would actually pass the skip-permissions flags.
+
+        The toggle is one piece of state for the whole picker, but it only means
+        anything on a chip that can honour it. Reading it through here is what
+        lets the row be cycled without the setting being silently lost, while
+        never claiming a shell or an agent without a flag is being started
+        unprompted.
+        """
+        return self.skip_permissions and self.can_skip()
+
+    def toggle_skip_permissions(self) -> None:
+        if self.skip_permissions:
+            self.skip_permissions = False
+            self._dirty = True
+            return
+        if not self.can_skip():
+            agent = self.agent()
+            self.flash(
+                "no skip-permissions flag for %s"
+                % (agent.label if not agent.is_none else "a plain shell")
+            )
+            return
+        self.skip_permissions = True
+        self._dirty = True
+
     def ghost(self) -> str:
         row = self.selected_row()
         return paths.completion_for(self.query, row.suggestion if row else None)
@@ -123,7 +168,18 @@ class Picker(object):
         folder = self.folder()
         if not folder:
             return None
-        return resolve_target(folder, self.snapshot, self.config.create)
+        return resolve_target(folder, self.snapshot, self.create_mode)
+
+    def cycle_create_mode(self) -> None:
+        """Move Enter along: decide for me, always a tab, always a space.
+
+        Three positions rather than two because the automatic decision is the
+        one worth being able to get back to, and a two-way switch would strand
+        you on an override with no way back that is not a config file.
+        """
+        self.create_mode = next_mode(self.create_mode)
+        self.recents.remember_create_mode(self.create_mode)
+        self._dirty = True
 
     def error(self) -> str:
         if self.status:
@@ -167,7 +223,21 @@ class Picker(object):
         self.cursor = len(query) if cursor is None else max(0, min(cursor, len(query)))
         self.refilter()
 
+    def toggle_help(self) -> None:
+        self.help = not self.help
+        self.status = None
+        self._dirty = True
+
     def insert(self, text: str, pasted: bool = False) -> None:
+        if self.help:
+            self.toggle_help()
+            return
+        # A path can legitimately contain a question mark, so `?` only asks for
+        # the panel where it cannot be something you meant to type. F1 is the
+        # spelling that works whatever is in the input.
+        if text == "?" and not pasted and not self.query:
+            self.toggle_help()
+            return
         cleaned = text.replace("\n", " ").replace("\r", " ") if pasted else text
         cleaned = "".join(char for char in cleaned if char >= " " and char != "\x7f")
         if not cleaned:
@@ -232,8 +302,19 @@ class Picker(object):
     # -- keys ---------------------------------------------------------------
 
     def handle_key(self, name: str) -> Optional[str]:
-        if name in ("esc", "ctrl+c", "ctrl+q"):
+        if name in ("ctrl+c", "ctrl+q"):
             return CANCEL
+        if self.help:
+            # Anything at all closes it, which is the behaviour a panel you
+            # opened by accident wants. Enter included: creating a tab from
+            # behind the help is not what the key was pressed for.
+            self.toggle_help()
+            return None
+        if name == "esc":
+            return CANCEL
+        if name == "f1":
+            self.toggle_help()
+            return None
         if name == "enter":
             return CONFIRM
 
@@ -282,6 +363,10 @@ class Picker(object):
             self.set_query("")
         elif name == "ctrl+k":
             self.set_query(self.query[: self.cursor], self.cursor)
+        elif name == "ctrl+y":
+            self.toggle_skip_permissions()
+        elif name == "ctrl+t":
+            self.cycle_create_mode()
         elif name == "ctrl+r":
             paths.clear_cache()
             self.refilter(keep=self.folder())
@@ -292,6 +377,10 @@ class Picker(object):
         return max(1, self._list_height - 1)
 
     def handle_mouse(self, event: Event) -> Optional[str]:
+        if self.help:
+            if event.value == PRESS:
+                self.toggle_help()
+            return None
         if event.value == WHEEL_UP:
             self.move(-3, wrap=False)
             return None
@@ -365,21 +454,34 @@ class Picker(object):
         return out
 
     def _hints(self) -> List[Tuple[str, str]]:
-        if self.ghost():
-            return [
-                ("⇥", "complete"),
-                ("↑↓", "folder"),
-                ("⇧⇥", "agent"),
-                ("⏎", "create"),
-                ("esc", ""),
-            ]
-        return [
-            ("⇥", "agent"),
-            ("↑↓", "folder"),
-            ("→", "complete"),
-            ("⏎", "create"),
-            ("esc", ""),
-        ]
+        # Offered exactly where it would do something. On a chip that cannot
+        # honour it the hint goes away along with the chip's mark and the target
+        # line's note, so nothing on screen claims a skip that is not going to
+        # happen -- and the setting itself survives, ready for the chip it came
+        # from.
+        skip: List[Tuple[str, str]] = []
+        if self.can_skip():
+            skip = [("^Y", "prompts off" if self.skipping() else "skip perms")]
+        # Named by the position it is in rather than by the one it is going to,
+        # so the footer and the target line's badge always say the same thing.
+        mode = [("^T", self.create_mode)]
+        # ⇥ says what it would do right now rather than everything it can do, so
+        # the pair of keys the input needs is always readable off one row. The
+        # keys with nothing to report -- ^W, ^U, ^R, click -- stay in the panel.
+        completion = (
+            [("⇥", "complete"), ("⇧⇥", "agent")]
+            if self.ghost()
+            else [("⇥", "agent"), ("→", "complete")]
+        )
+        return completion + [("↑↓", "folder")] + mode + skip + [("⏎", "create"), ("esc", "")]
+
+    def _guide(self) -> str:
+        """The corner that opens the panel -- while `?` is what it would do.
+
+        Once something is typed a question mark belongs to the path, so the
+        corner says the key that still works rather than one that no longer does.
+        """
+        return "? help" if not self.query else "F1 help"
 
     def frame(self, width: int, height: int) -> List[str]:
         """The whole screen as composed rows -- no terminal, no escape plumbing.
@@ -387,10 +489,18 @@ class Picker(object):
         Kept separate from ``draw`` so a frame can be rendered and asserted on
         without a pty, which is what the tests and the demo script both do.
         """
+        pad = " "
+        if self.help:
+            self._chip_row = -1  # nothing on screen is clickable while it is up
+            self._row_top = height
+            return [
+                pad + row
+                for row in render.render_help(self.theme, width - 2, height, self.create_mode)
+            ]
+
         layout = render.compute_layout(width, height)
         self._list_height = layout.list_height
 
-        pad = " "
         lines: List[str] = [pad + render.render_input(
             self.theme, layout.inner_width, self.query, self.cursor, self.ghost()
         )]
@@ -399,6 +509,10 @@ class Picker(object):
 
         self._row_top = len(lines)
         lines.extend(pad + row for row in self._list_rows(layout))
+        # Rows the list was not allowed to take. They sit here rather than under
+        # the chrome so the input stays at the top of the popup and the hints
+        # stay on its floor, which is where the eye already looks for them.
+        lines.extend([""] * layout.spare)
 
         if layout.rules:
             lines.append(pad + render.render_rule(self.theme, layout.inner_width))
@@ -408,16 +522,26 @@ class Picker(object):
             self._chip_row = len(lines)
             self._chip_spans = self._measure_chips()
             lines.append(pad + render.render_chips(
-                self.theme, layout.inner_width, self.chips, self.chip
+                self.theme, layout.inner_width, self.chips, self.chip, self.skipping()
             ))
         if layout.target:
             lines.append(pad + render.render_target(
-                self.theme, layout.inner_width, self.target(), self.agent(), self.error()
+                self.theme,
+                layout.inner_width,
+                self.target(),
+                self.agent(),
+                self.error(),
+                self.skipping(),
+                self.create_mode,
+            ))
+        if layout.note:
+            lines.append(pad + render.render_mode_note(
+                self.theme, layout.inner_width, self.create_mode
             ))
         if layout.footer:
             counter = "%d/%d" % (self.selected + 1, len(self.rows)) if self.rows else ""
             lines.append(pad + render.render_footer(
-                self.theme, layout.inner_width, self._hints(), counter
+                self.theme, layout.inner_width, self._hints(), counter, self._guide()
             ))
         return lines
 
@@ -431,11 +555,13 @@ class Picker(object):
         """Column spans of each chip, so a click can land on one."""
         spans: List[Tuple[int, int]] = []
         column = 1 + len("  agent  ")  # the leading pad column, then the label
+        skipping = self.skipping()
         for index, chip in enumerate(self.chips):
             if index:
                 column += 3  # " · "
-            spans.append((column, column + len(chip.label)))
-            column += len(chip.label)
+            label = render.chip_label(chip, index == self.chip, skipping)
+            spans.append((column, column + len(label)))
+            column += len(label)
         return spans
 
     # -- loop ---------------------------------------------------------------
@@ -482,8 +608,8 @@ class Picker(object):
         if not paths.is_directory(folder):
             self.flash("%s is not a folder" % paths.display(folder))
             return None
-        target = resolve_target(folder, self.snapshot, self.config.create)
-        return Choice(normalize(folder), self.agent(), target)
+        target = resolve_target(folder, self.snapshot, self.create_mode)
+        return Choice(normalize(folder), self.agent(), target, self.skipping())
 
     def _consume(self, events: Sequence[Event]) -> Optional[str]:
         outcome: Optional[str] = None

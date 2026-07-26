@@ -37,6 +37,10 @@ _CSI_FINAL = {
     "Z": "shift+tab",
 }
 
+# Function keys arrive as SS3 on most terminals and as CSI ~ on the rest. Only
+# the SS3 branch reads this: CSI P is a terminal's own command, never a key.
+_SS3_FINAL = dict(_CSI_FINAL, P="f1", Q="f2", R="f3", S="f4")
+
 _CSI_TILDE = {
     "1": "home",
     "2": "insert",
@@ -46,6 +50,10 @@ _CSI_TILDE = {
     "6": "pgdn",
     "7": "home",
     "8": "end",
+    "11": "f1",
+    "12": "f2",
+    "13": "f3",
+    "14": "f4",
 }
 
 _CTRL_NAMES = {
@@ -87,13 +95,21 @@ class KeyDecoder(object):
         return events
 
     def pending_escape(self) -> bool:
-        return self._buffer == b"\x1b"
+        return self._buffer in (b"\x1b", b"\x1bO")
 
     def flush(self) -> List[Event]:
-        """Resolve a dangling ESC once the caller decides it stands alone."""
+        """Resolve a dangling escape once the caller decides it stands alone.
+
+        ``ESC O`` is the front of a function key that arrived split across two
+        reads, and it is also alt+O. Waiting is what makes the first one work;
+        the timeout is what stops the second one being swallowed.
+        """
         if self._buffer == b"\x1b":
             self._buffer = b""
             return [Event(KEY, "esc")]
+        if self._buffer == b"\x1bO":
+            self._buffer = b""
+            return [Event(KEY, "alt+O")]
         return []
 
     # -- parsing ------------------------------------------------------------
@@ -110,8 +126,10 @@ class KeyDecoder(object):
             second = buffer[1]
             if second == 0x5B:  # CSI
                 return self._step_csi()
-            if second == 0x4F and len(buffer) >= 3:  # SS3, application cursor keys
-                name = _CSI_FINAL.get(chr(buffer[2]))
+            if second == 0x4F:  # SS3: cursor and function keys
+                if len(buffer) < 3:
+                    return 0, None  # split across reads: wait, or flush()
+                name = _SS3_FINAL.get(chr(buffer[2]))
                 if name:
                     return 3, Event(KEY, name)
                 return 3, None

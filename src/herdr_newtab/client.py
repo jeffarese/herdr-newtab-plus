@@ -16,7 +16,7 @@ import json
 import os
 import socket
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 
 class HerdrError(RuntimeError):
@@ -167,25 +167,42 @@ class HerdrClient:
             args += ["--label", label]
         return self.call("workspace.create", params, args)
 
-    def start_agent(self, name: str, kind: str, pane_id: str, timeout_ms: int = 60000) -> None:
+    def start_agent(
+        self,
+        name: str,
+        kind: str,
+        pane_id: str,
+        timeout_ms: int = 60000,
+        args: Sequence[str] = (),
+    ) -> None:
         """Launch an agent into a pane that is still an idle shell.
 
         Herdr only returns once the agent owns the terminal and is ready for
         input, so this can sit for many seconds. Callers that want the popup
         gone first should run it in a detached child.
+
+        ``args`` is handed to the agent's own executable rather than to Herdr --
+        ``args`` over the socket, everything after ``--`` on the command line.
         """
-        self.call(
-            "agent.start",
-            {"name": name, "kind": kind, "pane_id": pane_id, "timeout_ms": timeout_ms},
-            [
-                "agent",
-                "start",
-                name,
-                "--kind",
-                kind,
-                "--pane",
-                pane_id,
-                "--timeout",
-                str(timeout_ms),
-            ],
-        )
+        extra = [str(arg) for arg in args]
+        params: Dict[str, Any] = {
+            "name": name,
+            "kind": kind,
+            "pane_id": pane_id,
+            "timeout_ms": timeout_ms,
+        }
+        cli = [
+            "agent",
+            "start",
+            name,
+            "--kind",
+            kind,
+            "--pane",
+            pane_id,
+            "--timeout",
+            str(timeout_ms),
+        ]
+        if extra:
+            params["args"] = extra
+            cli += ["--"] + extra
+        self.call("agent.start", params, cli)

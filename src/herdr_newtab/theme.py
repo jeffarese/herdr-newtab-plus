@@ -42,14 +42,22 @@ DEFAULTS = {
     "accent": "bright_blue",
     "text": "default",
     "muted": "244",
-    "dim": "bright_black",
+    # Grays rather than `bright_black`, which is the one ANSI slot themes treat
+    # as decoration: Tokyo Night and its relatives set it to a near-background
+    # navy, and everything drawn in it -- hint labels, the counter, the line
+    # spelling the create mode out -- came out unreadable. A gray from the cube
+    # is the same gray whatever the terminal's palette says.
+    "dim": "245",
     "match": "bright_blue",
     # The inline completion sitting after the cursor: present enough to read,
     # faint enough that it never looks like something you typed.
-    "ghost": "bright_black",
+    "ghost": "244",
     "agent": "bright_magenta",
     "space": "bright_cyan",
     "error": "bright_red",
+    # An agent about to start with its permission prompts off. Deliberately not
+    # the agent color: the point is that the chip stops looking ordinary.
+    "warn": "bright_yellow",
 }
 
 
@@ -83,9 +91,13 @@ class Theme(object):
         appearance: Optional[str] = None,
     ) -> None:
         merged = dict(DEFAULTS)
-        muted = default_muted(appearance)
-        if muted:
-            merged["muted"] = muted
+        for role, spec in (
+            ("muted", default_muted(appearance)),
+            ("dim", default_dim(appearance)),
+            ("ghost", default_ghost(appearance)),
+        ):
+            if spec:
+                merged[role] = spec
         merged.update({k: v for k, v in (overrides or {}).items() if isinstance(v, str)})
         self._fg: Dict[str, str] = {}
         for role, spec in merged.items():
@@ -114,6 +126,33 @@ def default_muted(appearance: Optional[str]) -> Optional[str]:
         return "249"
     if appearance == "light":
         return "240"
+    return None
+
+
+def default_dim(appearance: Optional[str]) -> Optional[str]:
+    """The third tier: below the secondary text, still a thing you can read.
+
+    Separators and labels live here, and a label nobody can read is a label that
+    is not there -- so it moves with the background rather than sitting at one
+    gray that only suits half of them.
+    """
+    if appearance == "dark":
+        return "246"
+    if appearance == "light":
+        return "243"
+    return None
+
+
+def default_ghost(appearance: Optional[str]) -> Optional[str]:
+    """The inline completion: one step below `dim`, on whichever side is fainter.
+
+    It sits in the middle of the input rather than beside it, so it is the one
+    place where being read as typed text is worse than being hard to read.
+    """
+    if appearance == "dark":
+        return "244"
+    if appearance == "light":
+        return "245"
     return None
 
 

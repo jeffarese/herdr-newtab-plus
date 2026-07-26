@@ -152,7 +152,7 @@ class CatalogTest(unittest.TestCase):
         catalog = build_catalog(snap, [self.tree.root], use_zoxide=False)
         found = {item.name: item for item in catalog}
         self.assertEqual(found["one"].source, SOURCE_SPACE)
-        self.assertEqual(found["one"].detail, "WeekGen")
+        self.assertEqual(found["one"].detail, "Atlas")
         self.assertEqual(found["two"].source, SOURCE_ROOT)
 
     def test_recents_lead_and_are_not_duplicated_by_the_scan(self):

@@ -129,6 +129,37 @@ def pad(text: str, width: int) -> str:
     return text + " " * missing if missing > 0 else text
 
 
+def wrap(text: str, width: int) -> List[str]:
+    """Break text into lines of at most ``width`` display columns.
+
+    Words rather than characters, and measured rather than counted, so the help
+    panel can be written as sentences and still be right about a folder name
+    with a wide character in it. A word longer than the width is cut, since a
+    line that overflows would be drawn over the popup's own border.
+    """
+    if width <= 0:
+        return [""]
+    lines: List[str] = []
+    line = ""
+    used = 0
+    for word in text.split():
+        size = display_width(word)
+        if line and used + 1 + size > width:
+            lines.append(line)
+            line, used = "", 0
+        if size > width:
+            if line:
+                lines.append(line)
+                line, used = "", 0
+            lines.append(truncate(word, width))
+            continue
+        line = word if not line else line + " " + word
+        used += size if used == 0 else size + 1
+    if line:
+        lines.append(line)
+    return lines or [""]
+
+
 def window_positions(
     text: str, width: int, positions: Sequence[int]
 ) -> Tuple[str, List[int], int]:

@@ -18,6 +18,17 @@ from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple
 
 TAB = "tab"
 SPACE = "space"
+SMART = "smart"
+
+# What ``create`` can be, in the order the picker's own key cycles them: the
+# automatic decision first, then each way of overriding it.
+MODES = (SMART, TAB, SPACE)
+
+
+def next_mode(mode: str) -> str:
+    """The mode after this one. An unrecognised mode behaves as ``SMART`` does."""
+    index = MODES.index(mode) if mode in MODES else 0
+    return MODES[(index + 1) % len(MODES)]
 
 
 class Space(NamedTuple):
@@ -144,6 +155,15 @@ def normalize(path: str) -> str:
     return absolute.rstrip(os.sep) or os.sep
 
 
+# Following symlinks costs one lstat per path component, and the paths asked
+# about are the same on every frame: the panes in the snapshot, which cannot
+# change while the picker is up, and the folder under the cursor, which comes
+# back around as soon as the selection does. So each answer is worked out once.
+# Same bargain as the directory listings in ``paths``: the picker is modal and
+# short-lived, and the rescan key clears both.
+_RESOLVED: Dict[str, str] = {}
+
+
 def resolved(path: str) -> str:
     """The same folder with every symlink followed.
 
@@ -154,10 +174,20 @@ def resolved(path: str) -> str:
     folder = normalize(path)
     if not folder:
         return ""
+    found = _RESOLVED.get(folder)
+    if found is not None:
+        return found
     try:
-        return os.path.realpath(folder).rstrip(os.sep) or os.sep
+        found = os.path.realpath(folder).rstrip(os.sep) or os.sep
     except OSError:
-        return folder
+        found = folder
+    _RESOLVED[folder] = found
+    return found
+
+
+def clear_resolved() -> None:
+    """Forget every followed symlink, so the next question is asked afresh."""
+    _RESOLVED.clear()
 
 
 def resolve_target(
@@ -170,7 +200,9 @@ def resolve_target(
     label = os.path.basename(normalized) or normalized
 
     if mode == SPACE:
-        return Target(SPACE, normalized)
+        # Labelled like any other new space: the line above the hints names the
+        # space Enter is about to make, whether it was inferred or insisted on.
+        return Target(SPACE, normalized, workspace_label=label)
 
     known = space_folders(snapshot)
     match = known.get(normalized) or known.get(resolved(folder))

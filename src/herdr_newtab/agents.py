@@ -71,6 +71,44 @@ PREFERRED = (
 
 NONE_LABEL = "shell"
 
+# kind -> the arguments that start it with its permission prompts turned off.
+#
+# Every CLI spells this differently, and most do not spell it at all, so this is
+# a table of what was checked rather than a pattern. An agent missing from it is
+# not assumed to have an undiscovered spelling: the toggle refuses on that chip
+# and says so, which is the only answer that cannot silently start an agent with
+# the wrong flag. `skip_permission_flags` in config.json adds or overrides an
+# entry when a CLI grows one, or when yours takes a different form.
+SKIP_PERMISSION_FLAGS: Dict[str, Sequence[str]] = {
+    "claude": ("--dangerously-skip-permissions",),
+    "codex": ("--dangerously-bypass-approvals-and-sandbox",),
+}
+
+SKIP_MARK = "!"  # what the chip row appends to say the flag is on
+
+
+def skip_permission_flags(
+    kind: str,
+    overrides: Optional[Dict[str, Sequence[str]]] = None,
+) -> List[str]:
+    """The arguments that disable permission prompts for one agent kind.
+
+    Empty means this kind has no known way to ask for it, which callers must
+    treat as a refusal rather than as "pass nothing and hope".
+    """
+    if not kind:
+        return []
+    if overrides and kind in overrides:
+        return [str(flag) for flag in overrides[kind]]
+    return list(SKIP_PERMISSION_FLAGS.get(kind, ()))
+
+
+def can_skip_permissions(
+    kind: str,
+    overrides: Optional[Dict[str, Sequence[str]]] = None,
+) -> bool:
+    return bool(skip_permission_flags(kind, overrides))
+
 
 def installed(kind: str) -> bool:
     for binary in KNOWN.get(kind, (kind,)):

@@ -63,6 +63,38 @@ class InitialIndexTest(unittest.TestCase):
         self.assertEqual(initial_index(self.chips, "claude", "codex"), 1)
 
 
+class SkipPermissionFlagsTest(unittest.TestCase):
+    def test_a_known_agent_reports_its_own_spelling(self):
+        self.assertEqual(
+            agents.skip_permission_flags("claude"), ["--dangerously-skip-permissions"]
+        )
+        self.assertEqual(
+            agents.skip_permission_flags("codex"),
+            ["--dangerously-bypass-approvals-and-sandbox"],
+        )
+
+    def test_an_agent_with_no_known_flag_reports_nothing(self):
+        self.assertEqual(agents.skip_permission_flags("opencode"), [])
+        self.assertFalse(agents.can_skip_permissions("opencode"))
+
+    def test_a_plain_shell_is_never_skippable(self):
+        self.assertEqual(agents.skip_permission_flags(""), [])
+        self.assertFalse(agents.can_skip_permissions(""))
+
+    def test_config_teaches_the_toggle_an_agent_it_did_not_know(self):
+        self.assertTrue(agents.can_skip_permissions("gemini", {"gemini": ["--yolo"]}))
+        self.assertEqual(agents.skip_permission_flags("gemini", {"gemini": ["--yolo"]}), ["--yolo"])
+
+    def test_config_overrides_a_built_in_spelling(self):
+        self.assertEqual(
+            agents.skip_permission_flags("claude", {"claude": ["--permission-mode", "bypass"]}),
+            ["--permission-mode", "bypass"],
+        )
+
+    def test_an_empty_override_turns_the_toggle_off_for_that_agent(self):
+        self.assertFalse(agents.can_skip_permissions("claude", {"claude": []}))
+
+
 class AgentEnvTest(unittest.TestCase):
     def test_plugin_variables_do_not_leak_into_the_child(self):
         os.environ["HERDR_PLUGIN_ID"] = "herdr-newtab-plus"

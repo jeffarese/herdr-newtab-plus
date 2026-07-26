@@ -28,12 +28,23 @@ jobs:
         env:
           PYTHONPATH: src
       - name: Static frame renders
-        run: python scripts/demo.py --frame --plain --size 92x20
+        # The size the manifest actually ships: Herdr hands the pty `height - 2`
+        # rows and `width - 3` columns of the popup's 110x30.
+        run: |
+          python scripts/demo.py --frame --plain --size 107x28
+          python scripts/demo.py --frame --plain --size 107x28 --panel
+      # Only the counts -- bytes on the wire and syscalls per frame -- which are
+      # the same on every machine. The timings the benchmark also reports would
+      # say nothing true from a shared runner, so they are not gated.
+      - name: Frame cost
+        run: python scripts/bench.py --check --iterations 60
       - name: Lint
         if: matrix.python == '3.13'
         run: pipx run ruff check .
       - name: Manifest parses
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        env:
+          PYTHONPATH: src
         run: |
           python - <<'PY'
           import tomllib
@@ -41,7 +52,23 @@ jobs:
               manifest = tomllib.load(handle)
           for key in ("id", "name", "version", "min_herdr_version"):
               assert manifest.get(key), "manifest is missing %s" % key
-          assert manifest["panes"][0]["placement"] == "popup"
+          pane = manifest["panes"][0]
+          assert pane["placement"] == "popup"
+          # The popup is sized for the help panel, so what the manifest has to
+          # keep true is the other end: the picker's list stays capped however
+          # tall the popup is, and the panel says all of it without shedding a
+          # row. Nothing else would notice either quietly stopping.
+          from herdr_newtab.render import MAX_LIST, compute_layout, render_help
+          from herdr_newtab.theme import Theme
+          inner = (pane["width"] - 3, pane["height"] - 2)
+          layout = compute_layout(*inner)
+          assert layout.footer and layout.chips and layout.target, "chrome does not fit"
+          assert layout.note, "no room for the line spelling the create mode out"
+          assert layout.list_height == MAX_LIST, (
+              "expected %d suggestions, got %d" % (MAX_LIST, layout.list_height)
+          )
+          panel = render_help(Theme(), inner[0] - 2, inner[1])
+          assert panel[-1].strip(), "the help panel does not fit the popup it sized"
           assert manifest["actions"][0]["id"] == "open"
           print("manifest ok:", manifest["id"], manifest["version"])
           PY

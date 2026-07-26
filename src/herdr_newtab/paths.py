@@ -22,7 +22,7 @@ import subprocess
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from .fuzzy import match, split_query
-from .session import Space, normalize, space_folders
+from .session import Space, clear_resolved, normalize, space_folders
 
 # Rank breaks ties between sources when two folders score the same. Lower wins.
 SOURCE_SPACE = "space"
@@ -59,8 +59,17 @@ class Scored(NamedTuple):
     path_positions: Tuple[int, ...]
 
 
+# Every row's path is written for display against home, so a keystroke asks for
+# it once per folder in the catalog -- hundreds of times to produce the same
+# string. A process cannot move house while it runs.
+_HOME = ""
+
+
 def home() -> str:
-    return os.path.expanduser("~")
+    global _HOME
+    if not _HOME:
+        _HOME = os.path.expanduser("~")
+    return _HOME
 
 
 def display(path: str) -> str:
@@ -123,7 +132,9 @@ def subdirectories(directory: str, hidden: bool = False) -> Tuple[Tuple[str, boo
 
 
 def clear_cache() -> None:
+    """Forget everything read off the filesystem. What the rescan key does."""
     _LISTINGS.clear()
+    clear_resolved()
 
 
 def is_directory(path: str) -> bool:

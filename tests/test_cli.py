@@ -5,7 +5,7 @@ import unittest
 from herdr_newtab.agents import Agent
 from herdr_newtab.app import Choice
 from herdr_newtab.cli import _transient, create
-from herdr_newtab.client import HerdrError
+from herdr_newtab.client import HerdrClient, HerdrError
 from herdr_newtab.session import SPACE, TAB, Target
 
 
@@ -50,6 +50,37 @@ class CreateTest(unittest.TestCase):
 
         with self.assertRaises(HerdrError):
             create(NoPane(), Choice("/a/x", SHELL, Target(SPACE, "/a/x")))
+
+
+class StartAgentArgsTest(unittest.TestCase):
+    """Agent arguments have to survive both transports, spelled each one's way."""
+
+    def setUp(self):
+        self.client = HerdrClient(socket_path=None, bin_path="herdr")
+        self.seen = []
+        self.client.call = lambda method, params, cli: self.seen.append((method, params, cli)) or {}
+
+    def start(self, args=()):
+        self.client.start_agent("a", "claude", "w1:p1", args=args)
+        return self.seen[-1]
+
+    def test_the_socket_gets_them_as_a_field(self):
+        _, params, _ = self.start(["--dangerously-skip-permissions"])
+        self.assertEqual(params["args"], ["--dangerously-skip-permissions"])
+
+    def test_the_cli_gets_them_after_a_double_dash(self):
+        _, _, cli = self.start(["--dangerously-skip-permissions"])
+        self.assertEqual(cli[-2:], ["--", "--dangerously-skip-permissions"])
+
+    def test_a_flag_is_never_mistaken_for_one_of_herdrs_own(self):
+        # Without the separator, `herdr` would try to parse these itself.
+        _, _, cli = self.start(["--kind", "evil"])
+        self.assertLess(cli.index("--"), cli.index("evil"))
+
+    def test_no_args_means_no_separator_and_no_field(self):
+        _, params, cli = self.start()
+        self.assertNotIn("args", params)
+        self.assertNotIn("--", cli)
 
 
 class TransientTest(unittest.TestCase):

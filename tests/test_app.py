@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import unittest
 
 from herdr_newtab import paths
@@ -16,6 +17,11 @@ from .fixtures import Tree, pane, picker, snapshot
 
 def catalog(*names):
     return [Suggestion("/a/" + name, name, SOURCE_ROOT) for name in names]
+
+
+def plain(frame):
+    """A frame with its colors stripped, so text can be asserted on."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", "\n".join(frame))
 
 
 def press(app, *keys):
@@ -48,7 +54,7 @@ class TypingTest(unittest.TestCase):
         self.assertEqual(self.app.query, "a b")
 
     def test_delete_word_walks_back_a_path_segment(self):
-        self.app.set_query("~/workspace/tri/")
+        self.app.set_query("~/workspace/atlas/")
         self.app.delete_word()
         self.assertEqual(self.app.query, "~/workspace/")
         self.app.delete_word()
@@ -261,6 +267,230 @@ class MouseTest(unittest.TestCase):
 
     def test_clicking_past_the_list_does_nothing(self):
         self.assertIsNone(self.app.handle_mouse(Event(MOUSE, PRESS, 4, 19)))
+
+
+class CreateModeTest(unittest.TestCase):
+    """^T decides between letting the plugin choose and forcing either answer."""
+
+    def setUp(self):
+        self.tree = Tree("open", "fresh")
+        paths.clear_cache()
+        self.snap = snapshot([pane("w1:p1", self.tree.path("open"))])
+
+    def tearDown(self):
+        self.tree.close()
+        paths.clear_cache()
+
+    def app(self, **kwargs):
+        return picker(base=self.tree.root, snap=self.snap, **kwargs)
+
+    def test_it_starts_on_what_the_config_says(self):
+        self.assertEqual(self.app().create_mode, "smart")
+        self.assertEqual(self.app(config=Config({"create": "tab"})).create_mode, "tab")
+
+    def test_a_remembered_mode_wins_over_the_config(self):
+        recents = Recents(None)
+        recents.remember_create_mode("space")
+        self.assertEqual(self.app(recents=recents).create_mode, "space")
+
+    def test_ctrl_t_cycles_through_the_three(self):
+        app = self.app()
+        seen = [app.create_mode]
+        for _ in range(3):
+            press(app, "ctrl+t")
+            seen.append(app.create_mode)
+        self.assertEqual(seen, ["smart", TAB, SPACE, "smart"])
+
+    def test_forcing_a_space_stops_reusing_the_one_the_folder_has(self):
+        app = self.app()
+        app.set_query(self.tree.path("open"))
+        self.assertEqual(app.target().kind, TAB)
+        press(app, "ctrl+t", "ctrl+t")  # smart -> tab -> space
+        self.assertEqual(app.target().kind, SPACE)
+        self.assertEqual(app.choice().target.kind, SPACE)
+
+    def test_forcing_a_tab_lands_a_fresh_folder_in_the_focused_space(self):
+        app = self.app()
+        app.set_query(self.tree.path("fresh"))
+        self.assertEqual(app.target().kind, SPACE)
+        press(app, "ctrl+t")
+        target = app.target()
+        self.assertEqual(target.kind, TAB)
+        self.assertEqual(target.workspace_id, "w1")
+        self.assertEqual(app.choice().target.workspace_id, "w1")
+
+    def test_the_mode_is_handed_to_the_state_so_it_outlives_the_popup(self):
+        recents = Recents(None)
+        app = self.app(recents=recents)
+        press(app, "ctrl+t")
+        self.assertEqual(recents.create_mode(), TAB)
+
+    def test_the_frame_badges_an_override_and_the_footer_names_the_mode(self):
+        app = self.app()
+        app.set_query(self.tree.path("fresh"))
+        self.assertIn(("^T", "smart"), app._hints())
+        self.assertNotIn("[tab]", plain(app.frame(80, 20)))  # nothing to badge yet
+        press(app, "ctrl+t")
+        self.assertIn(("^T", TAB), app._hints())
+        self.assertIn("[tab]", plain(app.frame(80, 20)))
+
+    def test_a_forced_mode_survives_moving_through_the_list(self):
+        app = self.app()
+        press(app, "ctrl+t", "ctrl+t")
+        app.set_query(self.tree.root + os.sep)
+        app.move(1)
+        self.assertEqual(app.create_mode, SPACE)
+        self.assertEqual(app.target().kind, SPACE)
+
+
+class HelpPanelTest(unittest.TestCase):
+    def setUp(self):
+        self.app = picker(catalog("alpha", "beta"))
+
+    def test_a_question_mark_opens_it_while_the_input_is_empty(self):
+        self.app.insert("?")
+        self.assertTrue(self.app.help)
+        self.assertEqual(self.app.query, "")
+
+    def test_a_question_mark_is_a_path_character_once_something_is_typed(self):
+        self.app.insert("a")
+        self.app.insert("?")
+        self.assertFalse(self.app.help)
+        self.assertEqual(self.app.query, "a?")
+
+    def test_a_pasted_question_mark_is_never_a_key(self):
+        self.app.insert("?", pasted=True)
+        self.assertFalse(self.app.help)
+        self.assertEqual(self.app.query, "?")
+
+    def test_f1_opens_it_whatever_is_in_the_input(self):
+        self.app.set_query("~/w")
+        press(self.app, "f1")
+        self.assertTrue(self.app.help)
+
+    def test_anything_closes_it_again(self):
+        for close in ("esc", "f1", "down", "enter"):
+            self.app.help = True
+            self.assertIsNone(press(self.app, close))
+            self.assertFalse(self.app.help, close)
+
+    def test_typing_closes_it_without_reaching_the_query(self):
+        self.app.help = True
+        self.app.insert("x")
+        self.assertFalse(self.app.help)
+        self.assertEqual(self.app.query, "")
+
+    def test_enter_behind_the_panel_does_not_create(self):
+        self.app.help = True
+        self.assertIsNone(press(self.app, "enter"))
+
+    def test_ctrl_c_still_cancels_from_behind_it(self):
+        self.app.help = True
+        self.assertEqual(press(self.app, "ctrl+c"), CANCEL)
+
+    def test_a_click_closes_it_rather_than_landing_on_a_row(self):
+        self.app.help = True
+        self.assertIsNone(self.app.handle_mouse(Event(MOUSE, PRESS, 4, 4)))
+        self.assertFalse(self.app.help)
+
+    def test_the_panel_marks_the_mode_the_picker_is_on(self):
+        press(self.app, "ctrl+t")  # smart -> tab
+        self.app.help = True
+        marked = [line for line in plain(self.app.frame(107, 28)).split("\n") if "▌" in line]
+        self.assertEqual(len(marked), 1)
+        self.assertIn("tab", marked[0])
+
+    def test_the_panel_explains_every_mode_and_takes_the_whole_popup(self):
+        self.app.help = True
+        text = plain(self.app.frame(107, 28))
+        for mode in ("smart", TAB, SPACE):
+            self.assertIn(mode, text)
+        self.assertNotIn("alpha", text)  # the list is gone while it is up
+
+    def test_the_corner_names_the_key_that_actually_works(self):
+        self.assertEqual(self.app._guide(), "? help")
+        self.app.set_query("~/w")
+        self.assertEqual(self.app._guide(), "F1 help")
+
+    def test_the_way_in_is_on_screen_in_every_state(self):
+        for query in ("", "~/w"):
+            self.app.set_query(query)
+            self.assertIn("help", plain(self.app.frame(107, 28)).split("\n")[-1])
+
+
+class SkipPermissionsTest(unittest.TestCase):
+    def setUp(self):
+        # A real folder, so the target line says what Enter would do rather
+        # than reporting a path that does not exist.
+        self.tree = Tree("alpha")
+        paths.clear_cache()
+        self.app = picker(base=self.tree.root)
+        self.app.set_query(self.tree.path("alpha"))
+        self.app.chip = 1  # claude, which has a known flag
+
+    def tearDown(self):
+        self.tree.close()
+        paths.clear_cache()
+
+    def test_it_starts_off(self):
+        self.assertFalse(self.app.skip_permissions)
+        self.assertFalse(self.app.skipping())
+
+    def test_ctrl_y_arms_and_disarms_it(self):
+        press(self.app, "ctrl+y")
+        self.assertTrue(self.app.skipping())
+        press(self.app, "ctrl+y")
+        self.assertFalse(self.app.skipping())
+
+    def test_an_agent_with_no_flag_refuses_and_says_why(self):
+        self.app.chip = 3  # pi
+        press(self.app, "ctrl+y")
+        self.assertFalse(self.app.skip_permissions)
+        self.assertIn("no skip-permissions flag for pi", self.app.error())
+
+    def test_a_plain_shell_refuses_too(self):
+        self.app.chip = 0
+        press(self.app, "ctrl+y")
+        self.assertFalse(self.app.skip_permissions)
+        self.assertIn("plain shell", self.app.error())
+
+    def test_cycling_onto_an_agent_without_a_flag_does_not_claim_to_skip(self):
+        press(self.app, "ctrl+y")
+        self.app.chip = 3  # pi
+        self.assertFalse(self.app.skipping())
+        # ...and cycling back finds the setting where it was left.
+        self.app.chip = 1
+        self.assertTrue(self.app.skipping())
+
+    def test_the_choice_carries_it(self):
+        press(self.app, "ctrl+y")
+        self.assertTrue(self.app.choice().skip_permissions)
+
+    def test_an_agent_without_a_flag_never_reaches_the_choice(self):
+        press(self.app, "ctrl+y")
+        self.app.chip = 3  # pi
+        self.assertFalse(self.app.choice().skip_permissions)
+
+    def test_the_chip_row_and_target_line_both_show_it(self):
+        press(self.app, "ctrl+y")
+        frame = "\n".join(self.app.frame(80, 20))
+        self.assertIn("claude!", frame)
+        self.assertIn("skip permissions", frame)
+
+    def test_a_click_still_lands_on_the_marked_chip(self):
+        press(self.app, "ctrl+y")
+        frame = self.app.frame(80, 20)  # measures the spans
+        self.assertTrue(any("claude!" in line for line in frame))
+        start, end = self.app._chip_spans[2]  # codex, after the widened claude
+        self.app.handle_mouse(Event(MOUSE, PRESS, start + 1, self.app._chip_row + 1))
+        self.assertEqual(self.app.agent().kind, "codex")
+        self.assertLess(start, end)
+
+    def test_the_footer_only_offers_the_key_where_it_would_work(self):
+        self.app.chip = 3  # pi
+        self.assertNotIn("^Y", " ".join(key for key, _ in self.app._hints()))
+        self.app.chip = 1
+        self.assertIn("^Y", " ".join(key for key, _ in self.app._hints()))
 
 
 class CancelTest(unittest.TestCase):

@@ -41,6 +41,27 @@ class LayoutTest(unittest.TestCase):
         for height in range(1, 30):
             self.assertGreaterEqual(render.compute_layout(90, height).list_height, 1)
 
+    def test_the_list_is_capped_however_tall_the_popup_is(self):
+        for height in (20, 28, 60):
+            self.assertEqual(render.compute_layout(105, height).list_height, render.MAX_LIST)
+
+    def test_the_rows_past_the_cap_become_air_rather_than_more_folders(self):
+        layout = render.compute_layout(105, 28)
+        self.assertGreater(layout.spare, 0)
+        # Every row is accounted for: input, rule, list, air, rule, chips,
+        # target, note, hints.
+        chrome = 2 + 2 + 1 + 1 + 1
+        self.assertEqual(layout.list_height + layout.spare + chrome, 28)
+
+    def test_the_mode_note_only_appears_when_the_rows_are_going_spare(self):
+        self.assertTrue(render.compute_layout(105, 28).note)
+        self.assertFalse(render.compute_layout(75, 12).note)
+
+    def test_a_small_popup_still_gives_the_list_what_is_left(self):
+        layout = render.compute_layout(75, 12)
+        self.assertEqual(layout.list_height, 6)
+        self.assertEqual(layout.spare, 0)
+
 
 class RowTest(unittest.TestCase):
     def test_a_row_fits_its_width(self):
@@ -48,8 +69,8 @@ class RowTest(unittest.TestCase):
         self.assertLessEqual(display_width(text), 60)
 
     def test_a_space_badge_names_the_space(self):
-        text = plain(render.render_row(THEME, row("a", SOURCE_SPACE, "WeekGen"), 60, False))
-        self.assertIn("WeekGen", text)
+        text = plain(render.render_row(THEME, row("a", SOURCE_SPACE, "Atlas"), 60, False))
+        self.assertIn("Atlas", text)
 
     def test_a_recent_row_says_so(self):
         self.assertIn("recent", plain(render.render_row(THEME, row("a", SOURCE_RECENT), 60, False)))
@@ -104,14 +125,44 @@ class ChipsTest(unittest.TestCase):
         self.assertIn("agent-10", text)
         self.assertLessEqual(display_width(text), 44)
 
+    def test_only_the_selected_chip_is_marked_as_skipping(self):
+        text = plain(render.render_chips(THEME, 90, CHIPS, 1, True))
+        self.assertIn("claude!", text)
+        self.assertNotIn("codex!", text)
+
+    def test_a_shell_is_never_marked(self):
+        self.assertNotIn("shell!", plain(render.render_chips(THEME, 90, CHIPS, 0, True)))
+
+    def test_a_crowded_row_stays_inside_its_width_when_marked(self):
+        many = [Agent("", "shell")] + [Agent("k%d" % i, "agent-%d" % i) for i in range(12)]
+        text = plain(render.render_chips(THEME, 44, many, 10, True))
+        self.assertIn("agent-9!", text)  # chips[10], the shell leading the row
+        self.assertLessEqual(display_width(text), 44)
+
 
 class TargetLineTest(unittest.TestCase):
+    def test_skipping_is_spelled_out_next_to_the_agent(self):
+        text = plain(
+            render.render_target(
+                THEME, 80, Target(TAB, "/a", "w1", "Atlas"), Agent("claude", "claude"), "", True
+            )
+        )
+        self.assertIn("claude (skip permissions)", text)
+
+    def test_it_is_silent_when_the_toggle_is_off(self):
+        text = plain(
+            render.render_target(
+                THEME, 80, Target(TAB, "/a", "w1", "Atlas"), Agent("claude", "claude")
+            )
+        )
+        self.assertNotIn("skip permissions", text)
+
     def test_a_tab_names_the_space_it_lands_in(self):
         text = plain(
-            render.render_target(THEME, 80, Target(TAB, "/a", "w1", "WeekGen"), Agent("", "shell"))
+            render.render_target(THEME, 80, Target(TAB, "/a", "w1", "Atlas"), Agent("", "shell"))
         )
         self.assertIn("new tab in", text)
-        self.assertIn("WeekGen", text)
+        self.assertIn("Atlas", text)
 
     def test_a_new_space_says_so(self):
         text = plain(
@@ -130,6 +181,21 @@ class TargetLineTest(unittest.TestCase):
         )
         self.assertIn("claude", text)
 
+    def test_a_forced_mode_is_badged(self):
+        text = plain(
+            render.render_target(
+                THEME, 80, Target(TAB, "/a", "w1", "Atlas"), None, "", False, "tab"
+            )
+        )
+        self.assertIn("new tab in", text)
+        self.assertIn("[tab]", text)
+
+    def test_the_automatic_decision_is_not_badged(self):
+        text = plain(
+            render.render_target(THEME, 80, Target(TAB, "/a", "w1", "Atlas"), None, "", False)
+        )
+        self.assertNotIn("[", text)
+
     def test_an_error_replaces_the_line(self):
         text = plain(render.render_target(THEME, 80, None, None, "/x does not exist"))
         self.assertIn("does not exist", text)
@@ -141,6 +207,126 @@ class TargetLineTest(unittest.TestCase):
             )
         )
         self.assertLessEqual(display_width(text), 24)
+
+
+class ModeNoteTest(unittest.TestCase):
+    def test_each_mode_is_spelled_out_in_words(self):
+        for mode in ("smart", TAB, SPACE):
+            text = plain(render.render_mode_note(THEME, 105, mode))
+            self.assertIn("^T", text)
+            self.assertIn(mode, text)
+            self.assertIn(render.MODE_NOTES[mode][:20], text)
+
+    def test_it_fits_a_narrower_popup(self):
+        for width in range(20, 106):
+            note = plain(render.render_mode_note(THEME, width, TAB))
+            self.assertLessEqual(display_width(note), width)
+
+
+class FooterTest(unittest.TestCase):
+    HINTS = [
+        ("⇥", "agent"),
+        ("↑↓", "folder"),
+        ("→", "complete"),
+        ("^T", "smart"),
+        ("^Y", "skip perms"),
+        ("⏎", "create"),
+        ("esc", ""),
+    ]
+
+    def footer(self, width):
+        return plain(render.render_footer(THEME, width, self.HINTS, "1/8"))
+
+    def test_a_wide_row_keeps_every_hint_and_the_counter(self):
+        text = self.footer(100)
+        for key, _ in self.HINTS:
+            self.assertIn(key, text)
+        self.assertTrue(text.rstrip().endswith("1/8"))
+
+    def test_the_popups_own_width_fits_all_the_keys_that_do_something(self):
+        # 75 is what Herdr's 80-cell popup leaves the picker's inner area.
+        text = self.footer(75)
+        for key in ("⇥", "↑↓", "→", "^T", "^Y", "⏎"):
+            self.assertIn(key, text)
+        self.assertIn("create", text)
+
+    def test_the_gap_closes_up_before_a_hint_is_given_up(self):
+        wide, tight = self.footer(100), self.footer(75)
+        self.assertIn("agent   ↑↓", wide)
+        self.assertIn("agent  ↑↓", tight)
+
+    def test_a_shed_hint_never_leaves_its_key_behind(self):
+        for width in range(12, 90):
+            text = self.footer(width)
+            for key, label in self.HINTS:
+                if label and key in text:
+                    self.assertIn(label, text, "%r kept %r without its label" % (width, key))
+
+    def test_it_never_outgrows_its_width(self):
+        for width in range(12, 90):
+            self.assertLessEqual(display_width(self.footer(width)), width)
+
+    def guided(self, width):
+        return plain(render.render_footer(THEME, width, self.HINTS, "1/8", "? help"))
+
+    def test_the_way_into_the_help_survives_every_width(self):
+        for width in range(20, 90):
+            self.assertIn("?", self.guided(width))
+
+    def kept(self, text):
+        return sum(1 for key, _ in self.HINTS if key in text)
+
+    def test_it_gives_up_the_guides_label_before_it_gives_up_a_hint(self):
+        self.assertIn("? help", self.guided(90))
+        self.assertNotIn("? help", self.guided(60))  # the label goes...
+        for width in range(20, 90):
+            # ...and asking for the label never costs a hint that asking for the
+            # bare key would have kept.
+            bare = plain(render.render_footer(THEME, width, self.HINTS, "1/8", "?"))
+            self.assertEqual(self.kept(self.guided(width)), self.kept(bare), width)
+
+    def test_the_guide_still_leaves_room_for_the_counter(self):
+        self.assertTrue(self.guided(75).rstrip().endswith("1/8"))
+
+
+class HelpPanelTest(unittest.TestCase):
+    # The size the popup actually ships: Herdr hands the pty `height - 2` rows
+    # and `width - 3` columns of the manifest's 110x30, and the picker keeps one
+    # column of padding on each side of that.
+    def rows(self, width=105, height=28, mode="smart"):
+        return [plain(row) for row in render.render_help(THEME, width, height, mode)]
+
+    def test_it_fills_the_popup_exactly(self):
+        rows = self.rows()
+        self.assertEqual(len(rows), 28)
+        self.assertTrue(rows[-1].strip(), "the last row is content, not padding")
+        for row in rows:
+            self.assertLessEqual(display_width(row), 105)
+
+    def test_every_mode_is_spelled_out(self):
+        text = "\n".join(self.rows())
+        for name, description in render.HELP_MODES:
+            self.assertIn(name, text)
+            self.assertIn(description[:20], text)
+
+    def test_the_current_mode_is_the_only_one_marked(self):
+        marked = [row for row in self.rows(mode="space") if "▌" in row]
+        self.assertEqual(len(marked), 1)
+        self.assertIn("space", marked[0])
+
+    def test_it_says_how_to_get_out(self):
+        self.assertIn("esc", self.rows()[0])
+
+    def test_a_short_popup_keeps_the_modes_and_sheds_the_rest(self):
+        rows = self.rows(height=12)
+        self.assertEqual(len(rows), 12)
+        self.assertIn("^T", "\n".join(rows))
+        self.assertIn("space", "\n".join(rows))
+
+    def test_a_narrow_popup_stays_inside_its_width(self):
+        for width in range(20, 106):
+            for row in self.rows(width=width):
+                self.assertLessEqual(display_width(row), width)
 
 
 class ScrollbarTest(unittest.TestCase):

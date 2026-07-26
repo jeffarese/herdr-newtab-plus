@@ -28,6 +28,16 @@ id = "newtab"
 title = "New tab"
 description = "Pick a folder and an optional agent, then open a tab there"
 placement = "popup"
-width = "72%"
-height = "60%"
+# Cells rather than percentages, because the useful size of this popup does not
+# scale with the monitor: the rows are a fixed width -- names cap at 34 columns
+# over a short parent path -- so a percentage only ever bought empty columns.
+#
+# The size is set by the help panel rather than by the picker. The picker wants
+# a short list and gets one whatever the popup is, capped at ten suggestions;
+# the panel is a page of prose about what the keys and the create modes do, and
+# a page it has to be read in halves is a page nobody reads. Herdr gives the pty
+# `height - 2` rows and `width - 3` columns, so this is 28 rows for the panel,
+# and for the picker ten folders with air above its chrome.
+width = 110
+height = 30
 command = ["python3", "run.py"]

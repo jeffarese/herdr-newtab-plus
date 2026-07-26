@@ -5,7 +5,7 @@ Useful for looking at the layout while changing it, and for CI to prove the
 frame still composes on every supported Python.
 
     python scripts/demo.py --size 92x20
-    python scripts/demo.py --plain --query '~/workspace/tri'
+    python scripts/demo.py --plain --query '~/workspace/atlas'
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from herdr_newtab.paths import (  # noqa: E402
     SOURCE_ZOXIDE,
     Suggestion,
 )
+from herdr_newtab.session import MODES  # noqa: E402
 from herdr_newtab.state import Recents  # noqa: E402
 from herdr_newtab.textutil import strip_ansi  # noqa: E402
 from herdr_newtab.theme import Theme  # noqa: E402
@@ -44,14 +45,14 @@ def catalog():
         )
 
     return [
-        folder("tri", SOURCE_SPACE, "WeekGen"),
+        folder("atlas", SOURCE_SPACE, "Atlas"),
         folder("herdr-bar", SOURCE_RECENT, is_git=True),
         folder("herdr-newtab-plus", SOURCE_RECENT, is_git=True),
-        folder("pacebeats-android", SOURCE_ZOXIDE, is_git=True),
-        folder("groceries", SOURCE_ROOT, is_git=True),
+        folder("mobile-client", SOURCE_ZOXIDE, is_git=True),
+        folder("notes", SOURCE_ROOT, is_git=True),
         folder("classifier", SOURCE_ROOT),
-        folder("monitor-notion", SOURCE_ROOT, is_git=True),
-        folder("hooklistener", SOURCE_ROOT, is_git=True),
+        folder("log-sink", SOURCE_ROOT, is_git=True),
+        folder("webhook-relay", SOURCE_ROOT, is_git=True),
     ]
 
 
@@ -61,13 +62,13 @@ def snapshot():
         "focused_workspace_id": "w1",
         "focused_pane_id": "w1:p5P",
         "workspaces": [
-            {"workspace_id": "w1", "label": "WeekGen", "number": 1, "focused": True},
+            {"workspace_id": "w1", "label": "Atlas", "number": 1, "focused": True},
         ],
         "panes": [
             {
                 "pane_id": "w1:p5P",
                 "workspace_id": "w1",
-                "cwd": os.path.join(HOME, "workspace", "tri"),
+                "cwd": os.path.join(HOME, "workspace", "atlas"),
             },
         ],
         "agents": [],
@@ -84,7 +85,7 @@ def chips():
     ]
 
 
-def build(query: str, selected: int, chip: int) -> Picker:
+def build(query: str, selected: int, chip: int, create: str = "smart") -> Picker:
     picker = Picker(
         snapshot=snapshot(),
         catalog=catalog(),
@@ -105,6 +106,7 @@ def build(query: str, selected: int, chip: int) -> Picker:
     picker.selected = min(selected, max(0, len(picker.rows) - 1))
     picker.chip = chip
     picker._chip_pinned = True
+    picker.create_mode = create
     return picker
 
 
@@ -114,12 +116,18 @@ def main() -> int:
     parser.add_argument("--query", default="")
     parser.add_argument("--selected", type=int, default=0)
     parser.add_argument("--chip", type=int, default=1)
+    parser.add_argument(
+        "--create", default="smart", choices=MODES, help="where Enter lands (^T in the picker)"
+    )
+    parser.add_argument("--panel", action="store_true", help="the ? help panel instead")
     parser.add_argument("--plain", action="store_true", help="strip colors")
     parser.add_argument("--frame", action="store_true", help="draw a box around it")
     args = parser.parse_args()
 
     width, height = (int(part) for part in args.size.lower().split("x"))
-    lines = build(args.query, args.selected, args.chip).frame(width, height)
+    picker = build(args.query, args.selected, args.chip, args.create)
+    picker.help = args.panel
+    lines = picker.frame(width, height)
     lines += [""] * (height - len(lines))
 
     for line in lines:

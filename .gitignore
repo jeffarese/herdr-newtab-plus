@@ -4,3 +4,8 @@ __pycache__/
 .venv/
 .ruff_cache/
 .pytest_cache/
+
+# Intermediate PNGs from scripts/record_demo.py; the .mp4 and .gif are kept.
+demo/.frames/
+demo/frame-*.png
+demo/scene-*.png

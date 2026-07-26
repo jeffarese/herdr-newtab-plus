@@ -12,15 +12,23 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
+from .session import MODES, SMART
+
 # Scanned one level deep for folders to offer before anything is typed. Only
 # the ones that exist are used, so the default list can be generous.
 DEFAULT_ROOTS = ["~/workspace", "~/projects", "~/src", "~/code", "~/dev", "~/repos"]
 
 DEFAULTS: Dict[str, Any] = {
     "roots": DEFAULT_ROOTS,
-    "create": "smart",  # "smart" | "tab" | "space"
+    # The starting point only: the picker's own toggle overrides it, and what it
+    # was left on is remembered in the state file.
+    "create": SMART,  # "smart" | "tab" | "space"
     "agents": "auto",  # "auto" (detect on PATH) | ["claude", "codex", ...]
     "default_agent": "last",  # "last" | "none" | an agent kind
+    # kind -> argv that starts that agent with its permission prompts off, e.g.
+    # {"gemini": ["--yolo"]}. Merged over the built-in table, so an entry here
+    # both teaches the toggle a new agent and corrects one it already knows.
+    "skip_permission_flags": {},
     "zoxide": "auto",  # true | false | "auto" (on when zoxide is installed)
     "hidden": False,  # offer dot-directories during path completion
     "mouse": True,
@@ -41,7 +49,7 @@ class Config(object):
         )
 
         create = merged.get("create")
-        self.create = create if create in ("smart", "tab", "space") else "smart"
+        self.create = create if create in MODES else SMART
 
         agents = merged.get("agents")
         self.agents = (
@@ -50,6 +58,17 @@ class Config(object):
 
         default_agent = merged.get("default_agent")
         self.default_agent = default_agent if isinstance(default_agent, str) else "last"
+
+        # A malformed entry is dropped rather than repaired: the values become
+        # argv for a real agent, so a half-understood one is worse than none.
+        flags = merged.get("skip_permission_flags")
+        self.skip_permission_flags: Dict[str, List[str]] = {}
+        if isinstance(flags, dict):
+            for kind, argv in flags.items():
+                if not isinstance(kind, str) or not isinstance(argv, (list, tuple)):
+                    continue
+                if all(isinstance(flag, str) for flag in argv):
+                    self.skip_permission_flags[kind] = [flag for flag in argv if flag]
 
         self.zoxide = merged.get("zoxide", "auto")
         self.hidden = bool(merged.get("hidden", False))

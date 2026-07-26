@@ -74,6 +74,28 @@ def _catalog(client: HerdrClient, config: Config, recents: Recents):
     return snapshot, catalog
 
 
+def _skip_summary(chips, config: Config) -> str:
+    """Which offered agents ctrl+Y can actually arm, and with what.
+
+    Worth printing: the answer is a table of flags per CLI, so "the toggle does
+    nothing on this chip" is otherwise only discoverable by pressing it.
+    """
+    parts = []
+    for chip in chips:
+        flags = agents.skip_permission_flags(chip.kind, config.skip_permission_flags)
+        if flags:
+            parts.append("%s (%s)" % (chip.label, " ".join(flags)))
+    return ", ".join(parts)
+
+
+def _create_mode(config: Config, recents: Recents) -> str:
+    """The mode in force, and whether the toggle or the config file set it."""
+    remembered = recents.create_mode()
+    if remembered is None:
+        return "%s (config)" % config.create
+    return "%s (remembered; config says %s)" % (remembered, config.create)
+
+
 def _doctor(client: HerdrClient, config: Config) -> int:
     recents = Recents(state_path())
     chips = agents.available(config.agents)
@@ -85,11 +107,12 @@ def _doctor(client: HerdrClient, config: Config) -> int:
         "socket usable    %s" % ("yes" if client.socket_ok else "no, using the CLI"),
         "config           %s" % (Config.path() or "(no HERDR_PLUGIN_CONFIG_DIR)"),
         "state            %s" % (state_path() or "(no HERDR_PLUGIN_STATE_DIR)"),
-        "create mode      %s" % config.create,
+        "create mode      %s" % _create_mode(config, recents),
         "roots            %s" % ", ".join(config.roots),
         "zoxide           %s"
         % ("yes" if config.wants_zoxide(paths.zoxide_installed()) else "no"),
         "agents           %s" % ", ".join(chip.label for chip in chips),
+        "skip permissions %s" % (_skip_summary(chips, config) or "(none of the above)"),
         "stdin is a tty   %s" % ("yes" if sys.stdin.isatty() else "no"),
     ]
     try:
@@ -141,9 +164,18 @@ def create(client: HerdrClient, choice: Choice) -> str:
     return pane_id
 
 
-def spawn_agent(choice: Choice, pane_id: str, name: str) -> None:
+def spawn_agent(
+    choice: Choice, pane_id: str, name: str, args: Optional[List[str]] = None
+) -> None:
     """Hand the agent start to a detached child so the popup can close now."""
-    payload = json.dumps({"name": name, "kind": choice.agent.kind, "pane": pane_id})
+    payload = json.dumps(
+        {
+            "name": name,
+            "kind": choice.agent.kind,
+            "pane": pane_id,
+            "args": list(args or []),
+        }
+    )
     command = [sys.executable, os.path.abspath(sys.argv[0]), START_AGENT, payload]
 
     log = None
@@ -200,6 +232,10 @@ def _start_agent(payload: str) -> int:
         name = str(request["name"])
         kind = str(request["kind"])
         pane = str(request["pane"])
+        raw = request.get("args") or []
+        if not isinstance(raw, list):
+            raise TypeError("args must be a list")
+        extra = [str(arg) for arg in raw]
     except (KeyError, TypeError, ValueError) as error:
         return _fail("bad --start-agent payload: %s" % error)
 
@@ -210,7 +246,7 @@ def _start_agent(payload: str) -> int:
 
     while True:
         try:
-            client.start_agent(name, kind, pane)
+            client.start_agent(name, kind, pane, args=extra)
             return 0
         except HerdrError as error:
             last = error
@@ -292,6 +328,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         choice = picker.run(terminal)
 
     if choice is None:
+        # Cancelling abandons the pick, not the preference: the create mode is a
+        # setting, and a toggle that quietly reverted on escape would be one you
+        # could never trust. A no-op when nothing was touched.
+        recents.save()
         return 0
 
     try:
@@ -301,7 +341,12 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if not choice.agent.is_none:
         name = agent_name(choice.folder, choice.agent.kind, sorted(live_agent_names(snapshot)))
-        spawn_agent(choice, pane_id, name)
+        extra = (
+            agents.skip_permission_flags(choice.agent.kind, config.skip_permission_flags)
+            if choice.skip_permissions
+            else []
+        )
+        spawn_agent(choice, pane_id, name, extra)
 
     recents.touch(choice.folder, choice.agent.kind)
     recents.save()

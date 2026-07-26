@@ -3,15 +3,20 @@ from __future__ import annotations
 import os
 import unittest
 
+from herdr_newtab import paths
 from herdr_newtab.session import (
+    SMART,
     SPACE,
     TAB,
     agent_name,
+    clear_resolved,
     created_ids,
     focused_cwd,
     live_agent_names,
+    next_mode,
     normalize,
     resolve_target,
+    resolved,
     space_folders,
     spaces,
 )
@@ -35,7 +40,7 @@ class SpacesTest(unittest.TestCase):
     def test_folders_come_from_panes(self):
         snap = snapshot([pane("w1:p1", "/a"), pane("w1:p2", "/b")])
         self.assertEqual(sorted(space_folders(snap)), ["/a", "/b"])
-        self.assertEqual(space_folders(snap)["/a"].label, "WeekGen")
+        self.assertEqual(space_folders(snap)["/a"].label, "Atlas")
 
     def test_focused_space_wins_a_shared_folder(self):
         snap = snapshot(
@@ -73,7 +78,7 @@ class ResolveTargetTest(unittest.TestCase):
         target = resolve_target("/open", self.snap, "smart")
         self.assertEqual(target.kind, TAB)
         self.assertEqual(target.workspace_id, "w1")
-        self.assertEqual(target.workspace_label, "WeekGen")
+        self.assertEqual(target.workspace_label, "Atlas")
 
     def test_smart_creates_a_space_for_anything_else(self):
         target = resolve_target("/elsewhere", self.snap, "smart")
@@ -93,6 +98,14 @@ class ResolveTargetTest(unittest.TestCase):
 
     def test_space_mode_never_reuses(self):
         self.assertEqual(resolve_target("/open", self.snap, "space").kind, SPACE)
+
+    def test_space_mode_still_names_the_space_it_would_make(self):
+        # The line above the hints reads off this label, so an insisted-on space
+        # has to carry one just as an inferred one does.
+        self.assertEqual(resolve_target("/open", self.snap, "space").workspace_label, "open")
+
+    def test_an_unknown_mode_behaves_as_smart_does(self):
+        self.assertEqual(resolve_target("/open", self.snap, "sideways").kind, TAB)
 
     def test_folder_is_normalized_on_the_way_in(self):
         self.assertEqual(resolve_target("/open/", self.snap, "smart").kind, TAB)
@@ -123,6 +136,16 @@ class ResolveTargetTest(unittest.TestCase):
             self.assertEqual(target.folder, link)
         finally:
             tree.close()
+
+
+class NextModeTest(unittest.TestCase):
+    def test_it_cycles_decide_for_me_then_each_override(self):
+        self.assertEqual(next_mode(SMART), TAB)
+        self.assertEqual(next_mode(TAB), SPACE)
+        self.assertEqual(next_mode(SPACE), SMART)
+
+    def test_an_unrecognised_mode_lands_where_smart_would(self):
+        self.assertEqual(next_mode("sideways"), TAB)
 
 
 class AgentNameTest(unittest.TestCase):
@@ -158,6 +181,72 @@ class SnapshotFieldsTest(unittest.TestCase):
         result = {"tab": {"tab_id": "w1:t1"}, "root_pane": {"pane_id": "w1:p1"}}
         self.assertEqual(created_ids(result), ("w1:t1", "w1:p1"))
         self.assertEqual(created_ids({}), (None, None))
+
+
+class ResolvedTest(unittest.TestCase):
+    """Following a symlink is remembered, and the rescan key is how you forget."""
+
+    def setUp(self):
+        self.tree = Tree("real")
+        self.link = self.tree.path("link")
+        os.symlink(self.tree.path("real"), self.link)
+        paths.clear_cache()
+
+    def tearDown(self):
+        self.tree.close()
+        paths.clear_cache()
+
+    def _realpath_calls(self, action):
+        seen = []
+        original = os.path.realpath
+
+        def counted(path):
+            seen.append(path)
+            return original(path)
+
+        os.path.realpath = counted
+        try:
+            action()
+        finally:
+            os.path.realpath = original
+        return seen
+
+    def test_follows_a_symlink(self):
+        self.assertEqual(resolved(self.link), self.tree.path("real"))
+
+    def test_the_same_folder_is_only_followed_once(self):
+        seen = self._realpath_calls(lambda: [resolved(self.link) for _ in range(5)])
+        self.assertEqual(len(seen), 1)
+
+    def test_a_remembered_answer_is_the_same_answer(self):
+        first = resolved(self.link)
+        self.assertEqual(resolved(self.link), first)
+
+    def test_different_folders_are_followed_separately(self):
+        seen = self._realpath_calls(
+            lambda: [resolved(self.link), resolved(self.tree.path("real"))]
+        )
+        self.assertEqual(len(seen), 2)
+
+    def test_the_rescan_key_makes_it_ask_again(self):
+        # ctrl+r goes through paths.clear_cache, so that has to reach this too
+        # or a repointed symlink would stay wrong for the life of the popup.
+        resolved(self.link)
+        paths.clear_cache()
+        seen = self._realpath_calls(lambda: resolved(self.link))
+        self.assertEqual(len(seen), 1)
+
+    def test_clearing_picks_up_a_symlink_that_moved(self):
+        os.makedirs(self.tree.path("other"))
+        self.assertEqual(resolved(self.link), self.tree.path("real"))
+        os.unlink(self.link)
+        os.symlink(self.tree.path("other"), self.link)
+        clear_resolved()
+        self.assertEqual(resolved(self.link), self.tree.path("other"))
+
+    def test_an_empty_path_is_never_cached_as_an_answer(self):
+        self.assertEqual(resolved(""), "")
+        self.assertEqual(resolved("   "), "")
 
 
 if __name__ == "__main__":

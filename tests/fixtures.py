@@ -23,7 +23,7 @@ def snapshot(
         "focused_pane_id": panes[0]["pane_id"] if panes else None,
         "workspaces": workspaces
         if workspaces is not None
-        else [{"workspace_id": "w1", "label": "WeekGen", "number": 1, "focused": True}],
+        else [{"workspace_id": "w1", "label": "Atlas", "number": 1, "focused": True}],
         "panes": panes,
         "agents": [],
     }
