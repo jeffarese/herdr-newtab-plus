@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Render the picker against a fixed session, with no Herdr and no pty.
+
+Useful for looking at the layout while changing it, and for CI to prove the
+frame still composes on every supported Python.
+
+    python scripts/demo.py --size 92x20
+    python scripts/demo.py --plain --query '~/workspace/tri'
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+
+from herdr_newtab.agents import Agent  # noqa: E402
+from herdr_newtab.app import Picker  # noqa: E402
+from herdr_newtab.config import Config  # noqa: E402
+from herdr_newtab.paths import (  # noqa: E402
+    SOURCE_RECENT,
+    SOURCE_ROOT,
+    SOURCE_SPACE,
+    SOURCE_ZOXIDE,
+    Suggestion,
+)
+from herdr_newtab.state import Recents  # noqa: E402
+from herdr_newtab.textutil import strip_ansi  # noqa: E402
+from herdr_newtab.theme import Theme  # noqa: E402
+
+HOME = os.path.expanduser("~")
+
+
+def catalog():
+    def folder(name, source, detail="", is_git=False):
+        return Suggestion(
+            path=os.path.join(HOME, "workspace", name),
+            name=name,
+            source=source,
+            detail=detail,
+            is_git=is_git,
+        )
+
+    return [
+        folder("tri", SOURCE_SPACE, "WeekGen"),
+        folder("herdr-bar", SOURCE_RECENT, is_git=True),
+        folder("herdr-newtab-plus", SOURCE_RECENT, is_git=True),
+        folder("pacebeats-android", SOURCE_ZOXIDE, is_git=True),
+        folder("groceries", SOURCE_ROOT, is_git=True),
+        folder("classifier", SOURCE_ROOT),
+        folder("monitor-notion", SOURCE_ROOT, is_git=True),
+        folder("hooklistener", SOURCE_ROOT, is_git=True),
+    ]
+
+
+def snapshot():
+    return {
+        "version": "0.7.5",
+        "focused_workspace_id": "w1",
+        "focused_pane_id": "w1:p5P",
+        "workspaces": [
+            {"workspace_id": "w1", "label": "WeekGen", "number": 1, "focused": True},
+        ],
+        "panes": [
+            {
+                "pane_id": "w1:p5P",
+                "workspace_id": "w1",
+                "cwd": os.path.join(HOME, "workspace", "tri"),
+            },
+        ],
+        "agents": [],
+    }
+
+
+def chips():
+    return [
+        Agent("", "shell"),
+        Agent("claude", "claude"),
+        Agent("codex", "codex"),
+        Agent("opencode", "opencode"),
+        Agent("pi", "pi"),
+    ]
+
+
+def build(query: str, selected: int, chip: int) -> Picker:
+    picker = Picker(
+        snapshot=snapshot(),
+        catalog=catalog(),
+        chips=chips(),
+        config=Config({"roots": []}),
+        recents=Recents(None),
+        theme=Theme(),
+        base=os.path.join(HOME, "workspace"),
+    )
+    # The demo drives the catalog directly rather than the filesystem, so a
+    # path-shaped query is filtered here instead of being completed for real.
+    picker.query = query
+    picker.cursor = len(query)
+    if query:
+        from herdr_newtab.paths import filter_catalog
+
+        picker.rows = filter_catalog(picker.catalog, query, 200)
+    picker.selected = min(selected, max(0, len(picker.rows) - 1))
+    picker.chip = chip
+    picker._chip_pinned = True
+    return picker
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--size", default="92x20", help="WIDTHxHEIGHT")
+    parser.add_argument("--query", default="")
+    parser.add_argument("--selected", type=int, default=0)
+    parser.add_argument("--chip", type=int, default=1)
+    parser.add_argument("--plain", action="store_true", help="strip colors")
+    parser.add_argument("--frame", action="store_true", help="draw a box around it")
+    args = parser.parse_args()
+
+    width, height = (int(part) for part in args.size.lower().split("x"))
+    lines = build(args.query, args.selected, args.chip).frame(width, height)
+    lines += [""] * (height - len(lines))
+
+    for line in lines:
+        text = strip_ansi(line) if args.plain else line
+        if args.frame:
+            from herdr_newtab.textutil import pad
+
+            sys.stdout.write("│" + pad(text, width) + ("│" if args.plain else "\x1b[0m│") + "\n")
+        else:
+            sys.stdout.write(text + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

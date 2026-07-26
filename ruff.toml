@@ -1,0 +1,11 @@
+# Lint config only -- the picker has no dependencies and no build step.
+#
+# Same narrow rule set as herdr-bar: correctness (pyflakes), the pycodestyle
+# errors, and import order. pyupgrade stays off because the code targets
+# Python 3.9 and spells optionals `typing.Optional` throughout.
+
+target-version = "py39"
+line-length = 100
+
+[lint]
+select = ["E", "F", "I"]

@@ -1,0 +1,33 @@
+id = "herdr-newtab-plus"
+name = "New Tab Plus"
+version = "0.1.0"
+# 0.7.4 is the first release with session-modal popup plugin panes. The picker
+# also needs `session.snapshot` (0.7.2) to infer which folders already have a
+# space open.
+min_herdr_version = "0.7.4"
+description = "New tab with a folder picker that completes real paths, and an optional agent to start"
+platforms = ["linux", "macos"]
+
+# Opening the picker is a one-liner through the Herdr CLI, so the action stays a
+# shell exec instead of paying a second interpreter startup. HERDR_BIN_PATH can
+# outlive the binary it points at when Herdr is upgraded under a running
+# server, so fall back to whatever is on PATH.
+[[actions]]
+id = "open"
+title = "New tab"
+description = "Pick a folder and an optional agent, then open a tab there"
+contexts = ["global"]
+command = [
+  "sh",
+  "-c",
+  'herdr_bin="${HERDR_BIN_PATH:-herdr}"; [ -x "$herdr_bin" ] || herdr_bin=herdr; exec "$herdr_bin" plugin pane open --plugin herdr-newtab-plus --entrypoint newtab --placement popup',
+]
+
+[[panes]]
+id = "newtab"
+title = "New tab"
+description = "Pick a folder and an optional agent, then open a tab there"
+placement = "popup"
+width = "72%"
+height = "60%"
+command = ["python3", "run.py"]
