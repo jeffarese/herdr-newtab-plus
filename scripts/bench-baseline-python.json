@@ -1,0 +1,67 @@
+{
+  "detail": {
+    "agent": {
+      "bytes": 99,
+      "median_ms": 0.3189160051988438
+    },
+    "calls": {
+      "keystroke": 0,
+      "nav": 3,
+      "nav_repeat": 0
+    },
+    "keystroke": {
+      "bytes": 112,
+      "bytes_max": 1518,
+      "compose_ms": 0.286832990241237,
+      "diff_ms": 0.1659580011619255,
+      "filter_ms": 1.0294589883415028,
+      "median_ms": 1.5382919955300167,
+      "p95_ms": 2.096500000334345
+    },
+    "navigation": {
+      "bytes": 981,
+      "bytes_max": 1364,
+      "median_ms": 0.4994580085622147,
+      "p95_ms": 0.5942499992670491
+    },
+    "repaint": {
+      "bytes": 4471,
+      "median_ms": 0.4446669918252155
+    },
+    "roots": {
+      "folders": 88,
+      "ms": 7.92354199802503,
+      "roots": 1
+    },
+    "startup": {
+      "floor_ms": 20.7694170094328,
+      "import_ms": 19.4614,
+      "total_ms": 42.47762500017416
+    }
+  },
+  "environment": {
+    "catalog": 400,
+    "panes": 8,
+    "platform": "darwin",
+    "python": "3.14.6",
+    "size": "107x28"
+  },
+  "grade": "A+",
+  "score": 100.0,
+  "scores": {
+    "frame_calls": 100.0,
+    "keystroke_bytes": 100.0,
+    "keystroke_ms": 100.0,
+    "nav_bytes": 100.0,
+    "nav_ms": 100.0,
+    "startup_ms": 100.0
+  },
+  "values": {
+    "frame_calls": 3.0,
+    "keystroke_bytes": 112.0,
+    "keystroke_ms": 2.096500000334345,
+    "nav_bytes": 981.0,
+    "nav_ms": 0.5942499992670491,
+    "startup_ms": 42.47762500017416
+  }
+}
