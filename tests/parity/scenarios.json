@@ -1,0 +1,3149 @@
+{
+ "machine": {
+  "size": [
+   107,
+   28
+  ],
+  "first_settle": 0.6,
+  "settle": 0.3,
+  "exit_timeout": 10.0,
+  "agent_timeout": 6.0,
+  "create_timeout": 1.5,
+  "after_agent": 0.3,
+  "resize_pause": 0.05,
+  "final_drain": 0.1,
+  "cli_timeout": 60,
+  "appearances": {
+   "dark": "\u001b]11;rgb:1e1e/1e1e/2e2e\u001b\\",
+   "light": "\u001b]11;rgb:fafa/fafa/f0f0\u0007"
+  },
+  "query": "\u001b]11;?",
+  "nudge": "\u001bOQ",
+  "folders": [
+   "atlas",
+   "atlas-web",
+   "beacon",
+   "cargo-lab",
+   "dotfiles",
+   "harbor",
+   "herdr-bar",
+   "herdr-newtab-plus",
+   "kestrel",
+   "lighthouse",
+   "meridian",
+   "nimbus",
+   "orchard",
+   "pier",
+   "quartz",
+   "relay",
+   "sable",
+   "tern",
+   "umbra",
+   "vesper",
+   "willow",
+   "zephyr"
+  ],
+  "git": [
+   "atlas",
+   "atlas-web",
+   "beacon",
+   "harbor",
+   "herdr-bar",
+   "herdr-newtab-plus",
+   "kestrel",
+   "meridian",
+   "orchard",
+   "relay",
+   "zephyr"
+  ],
+  "files": [
+   "README.md",
+   "Cargo.toml",
+   "LICENSE",
+   "Makefile",
+   ".gitignore",
+   ".env.example",
+   "notes.txt",
+   "pyproject.toml",
+   "setup.cfg",
+   "main.rs"
+  ],
+  "children": [
+   "src",
+   "tests",
+   "docs",
+   "scripts",
+   ".github",
+   "target",
+   "assets",
+   "examples"
+  ],
+  "config": {
+   "roots": [
+    "~/work"
+   ]
+  },
+  "agents_on_path": [
+   "claude",
+   "codex"
+  ],
+  "snapshots": {
+   "default": {
+    "version": "0.9.4",
+    "focused_workspace_id": "w1",
+    "focused_pane_id": "w1:p1",
+    "workspaces": [
+     {
+      "workspace_id": "w1",
+      "label": "atlas",
+      "number": 1,
+      "focused": true
+     },
+     {
+      "workspace_id": "w2",
+      "label": "harbor",
+      "number": 2,
+      "focused": false
+     },
+     {
+      "workspace_id": "w3",
+      "label": "Kestrel Ops",
+      "number": 3,
+      "focused": false
+     }
+    ],
+    "panes": [
+     {
+      "pane_id": "w1:p1",
+      "workspace_id": "w1",
+      "cwd": "{root}/atlas",
+      "focused": true
+     },
+     {
+      "pane_id": "w1:p2",
+      "workspace_id": "w1",
+      "cwd": "{root}/atlas-web"
+     },
+     {
+      "pane_id": "w2:p1",
+      "workspace_id": "w2",
+      "cwd": "{root}/harbor"
+     },
+     {
+      "pane_id": "w2:p2",
+      "workspace_id": "w2",
+      "cwd": "{root}/harbor-review"
+     },
+     {
+      "pane_id": "w3:p1",
+      "workspace_id": "w3",
+      "cwd": "{root}/kestrel"
+     },
+     {
+      "pane_id": "w3:p2",
+      "workspace_id": "w3",
+      "cwd": "{root}/kestrel",
+      "agent_status": "done",
+      "agent": "gemini"
+     }
+    ],
+    "agents": [
+     {
+      "pane_id": "w1:p1",
+      "agent": "claude",
+      "name": "atlas",
+      "agent_status": "working"
+     },
+     {
+      "pane_id": "w1:p2",
+      "agent": "codex",
+      "name": "atlas-web",
+      "agent_status": "blocked"
+     },
+     {
+      "pane_id": "w2:p1",
+      "agent": "claude",
+      "name": "harbor",
+      "status": "idle"
+     },
+     {
+      "pane_id": "w2:p2",
+      "agent": "Claude Code",
+      "agent_status": "none"
+     }
+    ]
+   },
+   "empty": {
+    "version": "0.9.4",
+    "workspaces": [],
+    "panes": [],
+    "agents": []
+   },
+   "odd": {
+    "version": 7,
+    "focused_pane_id": "nope",
+    "workspaces": [
+     {
+      "workspace_id": "w1",
+      "label": "",
+      "number": "3",
+      "focused": false
+     },
+     "not a space",
+     {
+      "workspace_id": 5,
+      "label": "bad"
+     },
+     {
+      "workspace_id": "w2",
+      "label": null,
+      "number": true,
+      "focused": true
+     }
+    ],
+    "panes": [
+     {
+      "pane_id": "w1:p1",
+      "workspace_id": "w1",
+      "cwd": "{root}/beacon/"
+     },
+     {
+      "pane_id": "w2:p1",
+      "workspace_id": "w2",
+      "cwd": "~/work/tern"
+     },
+     {
+      "pane_id": "w2:p2",
+      "workspace_id": "w2",
+      "cwd": ""
+     },
+     {
+      "pane_id": "w9:p1",
+      "workspace_id": "w9",
+      "cwd": "{root}/sable"
+     },
+     42
+    ],
+    "agents": [
+     {
+      "pane_id": "w1:p1",
+      "agent": "kimi",
+      "agent_status": "blocked"
+     },
+     {
+      "pane_id": "w2:p1",
+      "agent": "cursor-agent",
+      "agent_status": "working",
+      "foreground_cwd": "{root}/umbra"
+     },
+     "nope"
+    ]
+   },
+   "worktree": {
+    "version": "0.9.4",
+    "focused_workspace_id": "w1",
+    "focused_pane_id": "w1:p1",
+    "workspaces": [
+     {
+      "workspace_id": "w1",
+      "label": "atlas",
+      "number": 1,
+      "focused": true
+     },
+     {
+      "workspace_id": "w2",
+      "label": "harbor",
+      "number": 2,
+      "focused": false
+     },
+     {
+      "workspace_id": "w3",
+      "label": "Kestrel Ops",
+      "number": 3,
+      "focused": false
+     }
+    ],
+    "panes": [
+     {
+      "pane_id": "w1:p1",
+      "workspace_id": "w1",
+      "cwd": "{root}/atlas",
+      "focused": true
+     },
+     {
+      "pane_id": "w1:p2",
+      "workspace_id": "w1",
+      "cwd": "{root}/atlas-web"
+     },
+     {
+      "pane_id": "w2:p1",
+      "workspace_id": "w2",
+      "cwd": "{root}/harbor"
+     },
+     {
+      "pane_id": "w2:p2",
+      "workspace_id": "w2",
+      "cwd": "{root}/harbor-review"
+     },
+     {
+      "pane_id": "w3:p1",
+      "workspace_id": "w3",
+      "cwd": "{root}/kestrel"
+     },
+     {
+      "pane_id": "w3:p2",
+      "workspace_id": "w3",
+      "cwd": "{root}/kestrel",
+      "agent_status": "done",
+      "agent": "gemini"
+     },
+     {
+      "pane_id": "w2:p3",
+      "workspace_id": "w2",
+      "cwd": "{root}/atlas",
+      "focused": false
+     }
+    ],
+    "agents": [
+     {
+      "pane_id": "w1:p1",
+      "agent": "claude",
+      "name": "atlas",
+      "agent_status": "working"
+     },
+     {
+      "pane_id": "w1:p2",
+      "agent": "codex",
+      "name": "atlas-web",
+      "agent_status": "blocked"
+     },
+     {
+      "pane_id": "w2:p1",
+      "agent": "claude",
+      "name": "harbor",
+      "status": "idle"
+     },
+     {
+      "pane_id": "w2:p2",
+      "agent": "Claude Code",
+      "agent_status": "none"
+     }
+    ]
+   },
+   "symlink": {
+    "version": "0.9.4",
+    "focused_workspace_id": "w1",
+    "focused_pane_id": "w1:p1",
+    "workspaces": [
+     {
+      "workspace_id": "w1",
+      "label": "atlas",
+      "number": 1,
+      "focused": true
+     },
+     {
+      "workspace_id": "w2",
+      "label": "harbor",
+      "number": 2,
+      "focused": false
+     },
+     {
+      "workspace_id": "w3",
+      "label": "Kestrel Ops",
+      "number": 3,
+      "focused": false
+     }
+    ],
+    "panes": [
+     {
+      "pane_id": "w1:p1",
+      "workspace_id": "w1",
+      "cwd": "{root}/atlas",
+      "focused": true
+     },
+     {
+      "pane_id": "w1:p2",
+      "workspace_id": "w1",
+      "cwd": "{root}/atlas-web"
+     },
+     {
+      "pane_id": "w2:p1",
+      "workspace_id": "w2",
+      "cwd": "{root}/harbor"
+     },
+     {
+      "pane_id": "w2:p2",
+      "workspace_id": "w2",
+      "cwd": "{root}/harbor-review"
+     },
+     {
+      "pane_id": "w3:p1",
+      "workspace_id": "w3",
+      "cwd": "{root}/kestrel"
+     },
+     {
+      "pane_id": "w3:p2",
+      "workspace_id": "w3",
+      "cwd": "{root}/kestrel",
+      "agent_status": "done",
+      "agent": "gemini"
+     }
+    ],
+    "agents": [
+     {
+      "pane_id": "w1:p1",
+      "agent": "claude",
+      "name": "atlas",
+      "agent_status": "working"
+     },
+     {
+      "pane_id": "w1:p2",
+      "agent": "codex",
+      "name": "atlas-web",
+      "agent_status": "blocked"
+     },
+     {
+      "pane_id": "w2:p1",
+      "agent": "claude",
+      "name": "harbor",
+      "status": "idle"
+     },
+     {
+      "pane_id": "w2:p2",
+      "agent": "Claude Code",
+      "agent_status": "none"
+     }
+    ]
+   }
+  }
+ },
+ "scenarios": [
+  {
+   "name": "pick-open",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-browse",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b[A"
+    ],
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b[5~"
+    ],
+    [
+     "keys",
+     "\u000e"
+    ],
+    [
+     "keys",
+     "\u0010"
+    ],
+    [
+     "keys",
+     "\u001b[A"
+    ],
+    [
+     "keys",
+     "\u001b[A"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-type",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "type",
+     "her"
+    ],
+    [
+     "keys",
+     "\u007f"
+    ],
+    [
+     "type",
+     "rdr nt"
+    ],
+    [
+     "keys",
+     "\u0017"
+    ],
+    [
+     "type",
+     "bar"
+    ],
+    [
+     "keys",
+     "\u0001"
+    ],
+    [
+     "keys",
+     "\u001b[C"
+    ],
+    [
+     "keys",
+     "\u001b[C"
+    ],
+    [
+     "keys",
+     "\u001b[3~"
+    ],
+    [
+     "keys",
+     "\u0005"
+    ],
+    [
+     "keys",
+     "\u000b"
+    ],
+    [
+     "keys",
+     "\u001b[D"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-fuzzy",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "mrd"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "'atlas web'"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "ATL"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "zzzzqx"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-path",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "~/work/ha"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0017"
+    ],
+    [
+     "type",
+     "her"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0017"
+    ],
+    [
+     "keys",
+     "\u0017"
+    ],
+    [
+     "type",
+     "/"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-path-abs",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "{root}"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-path-dot",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "./"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "."
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     ".."
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-path-vars",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "$HOME/work/k"
+    ],
+    [
+     "keys",
+     "\u001b[C"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "${HOME}/wo"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-path-missing",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "~/work/nothing-here"
+    ],
+    [
+     "keys",
+     "\r"
+    ],
+    [
+     "wait",
+     0.4
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-complete-right",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "bea"
+    ],
+    [
+     "keys",
+     "\u001b[C"
+    ],
+    [
+     "keys",
+     "\u001b[C"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "keys",
+     "\u001b[C"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-help",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "?x"
+    ],
+    [
+     "keys",
+     "\u001bOP"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001bOP"
+    ],
+    [
+     "keys",
+     "\r"
+    ],
+    [
+     "type",
+     "a"
+    ],
+    [
+     "keys",
+     "\u001bOP"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-help-narrow",
+   "kind": "picker",
+   "size": [
+    60,
+    20
+   ],
+   "steps": [
+    [
+     "keys",
+     "\u001bOP"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-modes",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-mode-remembered",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "create": "tab",
+     "entries": []
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-skip",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\u001b[Z"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-agents",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u001b[Z"
+    ],
+    [
+     "keys",
+     "\u001b[Z"
+    ],
+    [
+     "keys",
+     "\u001b[Z"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-preview-toggle",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-preview-narrow",
+   "kind": "picker",
+   "size": [
+    85,
+    24
+   ],
+   "steps": [
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-preview-cases",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "harbor-rev"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "detached"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "empty"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "locked"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "many-fi"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "kestrel"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "~/work/nope"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "atlas-link"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-preview-hidden",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "hidden": true
+   },
+   "steps": [
+    [
+     "type",
+     "atlas"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "~/work/at"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-preview-on",
+   "kind": "picker",
+   "size": [
+    85,
+    24
+   ],
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "preview": true
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-preview-off",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "preview": false
+   },
+   "steps": [
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-preview-int",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "preview": 1
+   },
+   "steps": [
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-tab",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-space",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "type",
+     "tern"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-agent",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "expect_agent": true,
+   "steps": [
+    [
+     "type",
+     "beacon"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-skip",
+   "kind": "picker",
+   "expect_agent": true,
+   "steps": [
+    [
+     "type",
+     "quartz"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-forced-space",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "atlas"
+    ],
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-forced-tab",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "vesper"
+    ],
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-path",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "~/work/sable/"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-symlink",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "~/work/atlas-link"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-file",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "~/work/atlas/README.md"
+    ],
+    [
+     "keys",
+     "\r"
+    ],
+    [
+     "wait",
+     0.3
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-empty",
+   "kind": "picker",
+   "config": {
+    "roots": []
+   },
+   "data": "empty",
+   "steps": [
+    [
+     "keys",
+     "\r"
+    ],
+    [
+     "wait",
+     0.2
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-fails",
+   "kind": "picker",
+   "answers": {
+    "workspace.create": {
+     "reply": {
+      "error": {
+       "message": "nope, full"
+      }
+     }
+    }
+   },
+   "steps": [
+    [
+     "type",
+     "tern"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-no-pane",
+   "kind": "picker",
+   "answers": {
+    "tab.create": {
+     "reply": {
+      "result": {
+       "tab": {
+        "tab_id": "x"
+       }
+      }
+     }
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-create-name-taken",
+   "kind": "picker",
+   "expect_agent": true,
+   "answers": {
+    "agent.start": {
+     "by_call": [
+      {
+       "reply": {
+        "error": {
+         "message": "agent name taken"
+        }
+       }
+      },
+      {
+       "reply": {
+        "result": {}
+       }
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "type",
+     "atlas"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-mouse",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[<0;10;5M\u001b[<0;10;5m"
+    ],
+    [
+     "keys",
+     "\u001b[<0;10;6M\u001b[<0;10;6m"
+    ],
+    [
+     "keys",
+     "\u001b[<65;10;6M"
+    ],
+    [
+     "keys",
+     "\u001b[<64;10;6M"
+    ],
+    [
+     "keys",
+     "\u001b[<0;16;17M\u001b[<0;16;17m"
+    ],
+    [
+     "keys",
+     "\u001b[<0;90;6M\u001b[<0;90;6m"
+    ],
+    [
+     "keys",
+     "\u001b[<0;10;14M\u001b[<0;10;14m"
+    ],
+    [
+     "keys",
+     "\u001b[<0;10;5M\u001b[<0;10;5m"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-mouse-confirm",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u001b[<0;10;6M\u001b[<0;10;6m"
+    ],
+    [
+     "keys",
+     "\u001b[<0;10;6M\u001b[<0;10;6m"
+    ]
+   ]
+  },
+  {
+   "name": "pick-mouse-off",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "mouse": false
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-paste",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u001b[200~~/work/\nwil\r\u001b[201~"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "keys",
+     "\u001b[200~?\u001b[201~"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "keys",
+     "\u001b[200~a\u0001b\u001b[201~"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-rescan",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u0012"
+    ],
+    [
+     "wait",
+     0.2
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-flash",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u001b[C"
+    ],
+    [
+     "wait",
+     2.8
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-resize",
+   "kind": "picker",
+   "steps": [
+    [
+     "resize",
+     [
+      80,
+      20
+     ]
+    ],
+    [
+     "resize",
+     [
+      140,
+      40
+     ]
+    ],
+    [
+     "resize",
+     [
+      30,
+      6
+     ]
+    ],
+    [
+     "resize",
+     [
+      107,
+      28
+     ]
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-tiny",
+   "kind": "picker",
+   "size": [
+    24,
+    4
+   ],
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "type",
+     "a"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-small",
+   "kind": "picker",
+   "size": [
+    50,
+    8
+   ],
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-short",
+   "kind": "picker",
+   "size": [
+    70,
+    12
+   ],
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-wide",
+   "kind": "picker",
+   "size": [
+    200,
+    50
+   ],
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-unicode",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "日本"
+    ],
+    [
+     "keys",
+     "\u007f"
+    ],
+    [
+     "type",
+     "café"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "emoji"
+    ],
+    [
+     "keys",
+     "\u0015"
+    ],
+    [
+     "type",
+     "~/work/日"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-light",
+   "kind": "picker",
+   "appearance": "light",
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-silent-terminal",
+   "kind": "picker",
+   "appearance": null,
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-icons",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "agent_icons": "font"
+   },
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-icons-bool",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "agent_icons": true
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-colors",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "colors": {
+     "accent": "#ff8800",
+     "muted": "250",
+     "text": "nope",
+     "working": "1",
+     "dim": "red",
+     "agent_claude": "default",
+     "rule": "#12345",
+     "match": " BRIGHT_GREEN "
+    },
+    "selection_background": "#334455"
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "type",
+     "at"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-no-selection",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "selection_background": null
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-selection-none",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "selection_background": "none",
+    "colors": {
+     "muted": "244"
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-agents",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "agents": [
+     "codex",
+     "nope",
+     3,
+     "pi"
+    ],
+    "default_agent": "pi"
+   },
+   "steps": [
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-default-none",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "default_agent": "none"
+   },
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-default-codex",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "default_agent": "codex"
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-create",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "create": "space"
+   },
+   "steps": [
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-skip-flags",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "skip_permission_flags": {
+     "claude": [],
+     "gemini": [
+      "--yolo",
+      ""
+     ],
+     "codex": [
+      1
+     ]
+    }
+   },
+   "agents_on_path": [
+    "claude",
+    "codex",
+    "gemini"
+   ],
+   "expect_agent": true,
+   "steps": [
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "type",
+     "kestrel"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-max",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "max_suggestions": "5"
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-roots",
+   "kind": "picker",
+   "config": {
+    "roots": [
+     "~/work",
+     "~/work",
+     "~/work/harbor",
+     7,
+     "",
+     "~/missing",
+     "$HOME/work/herdr-bar"
+    ]
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-broken",
+   "kind": "picker",
+   "config": "{not json",
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-list",
+   "kind": "picker",
+   "config": "[1, 2]",
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-bom",
+   "kind": "picker",
+   "config": "\ufeff{\"roots\": [\"~/work\"]}",
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-config-nulls",
+   "kind": "picker",
+   "config": {
+    "roots": null,
+    "create": null,
+    "agents": null,
+    "mouse": null,
+    "hidden": null,
+    "zoxide": null,
+    "preview": null,
+    "colors": null,
+    "max_suggestions": null
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-zoxide",
+   "kind": "picker",
+   "zoxide": "  120.5 {root}/zephyr\n   88.0 {root}/willow\n  1_000 {root}/quartz\n  nan {root}/pier\ngarbage\n   88.0 {root}/vesper\n   12.0 {home}/not-there\n    2.5 {root}/atlas\n",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "zoxide": true
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-zoxide-auto",
+   "kind": "picker",
+   "zoxide": "  120.5 {root}/zephyr\n   88.0 {root}/willow\n  1_000 {root}/quartz\n  nan {root}/pier\ngarbage\n   88.0 {root}/vesper\n   12.0 {home}/not-there\n    2.5 {root}/atlas\n",
+   "steps": [
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "type",
+     "wil"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-zoxide-off",
+   "kind": "picker",
+   "zoxide": "  120.5 {root}/zephyr\n   88.0 {root}/willow\n  1_000 {root}/quartz\n  nan {root}/pier\ngarbage\n   88.0 {root}/vesper\n   12.0 {home}/not-there\n    2.5 {root}/atlas\n",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "zoxide": false
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-zoxide-fails",
+   "kind": "picker",
+   "zoxide": null,
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "zoxide": true
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-many-agents",
+   "kind": "picker",
+   "agents_on_path": [
+    "claude",
+    "codex",
+    "gemini",
+    "cursor-agent",
+    "opencode",
+    "copilot",
+    "amp",
+    "droid",
+    "grok",
+    "kimi",
+    "pi",
+    "cline",
+    "kilo",
+    "kiro",
+    "devin",
+    "agy",
+    "omp",
+    "mastracode",
+    "hermes",
+    "qoder",
+    "maki"
+   ],
+   "steps": [
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u001b[<0;60;25M\u001b[<0;60;25m"
+    ],
+    [
+     "keys",
+     "\u001b[Z"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-many-agents-narrow",
+   "kind": "picker",
+   "agents_on_path": [
+    "claude",
+    "codex",
+    "gemini",
+    "cursor-agent",
+    "opencode",
+    "copilot",
+    "amp",
+    "droid",
+    "grok",
+    "kimi",
+    "pi",
+    "cline",
+    "kilo",
+    "kiro",
+    "devin",
+    "agy",
+    "omp",
+    "mastracode",
+    "hermes",
+    "qoder",
+    "maki"
+   ],
+   "size": [
+    40,
+    12
+   ],
+   "steps": [
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-no-agents",
+   "kind": "picker",
+   "agents_on_path": [],
+   "steps": [
+    [
+     "keys",
+     "\t"
+    ],
+    [
+     "keys",
+     "\u0019"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-recents-broken",
+   "kind": "picker",
+   "files": {
+    "recent.json": "{oops"
+   },
+   "steps": [
+    [
+     "keys",
+     "\u0014"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-recents-odd",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "create": 4,
+     "entries": [
+      {
+       "path": "{root}/willow",
+       "agent": 7,
+       "ts": 1.5
+      },
+      {
+       "path": "{root}/willow/",
+       "agent": "claude",
+       "ts": true
+      },
+      {
+       "path": "",
+       "agent": "x"
+      },
+      "nope",
+      {
+       "agent": "codex"
+      },
+      {
+       "path": "{root}/relay",
+       "agent": "codex",
+       "ts": "x"
+      },
+      {
+       "path": "~/work/orchard",
+       "agent": "gemini",
+       "ts": 12345678901234567890
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-recents-touch",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "steps": [
+    [
+     "type",
+     "relay"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-odd-snapshot",
+   "kind": "picker",
+   "data": "odd",
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "type",
+     "umbra"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-worktree-spaces",
+   "kind": "picker",
+   "data": "worktree",
+   "steps": [
+    [
+     "type",
+     "atlas"
+    ],
+    [
+     "keys",
+     "\u000f"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-symlink-space",
+   "kind": "picker",
+   "data": "symlink",
+   "steps": [
+    [
+     "type",
+     "atlas-link"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
+   "name": "pick-empty-catalog",
+   "kind": "picker",
+   "config": {
+    "roots": []
+   },
+   "data": "empty",
+   "steps": [
+    [
+     "type",
+     "x"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-unreachable",
+   "kind": "picker",
+   "socket_up": false,
+   "steps": []
+  },
+  {
+   "name": "pick-bad-snapshot",
+   "kind": "picker",
+   "answers": {
+    "session.snapshot": {
+     "reply": {
+      "result": {
+       "nope": 1
+      }
+     }
+    }
+   },
+   "steps": []
+  },
+  {
+   "name": "pick-garbage-snapshot",
+   "kind": "picker",
+   "answers": {
+    "session.snapshot": {
+     "raw": "not json\n"
+    }
+   },
+   "steps": []
+  },
+  {
+   "name": "pick-herdr-error",
+   "kind": "picker",
+   "answers": {
+    "session.snapshot": {
+     "reply": {
+      "error": "boom"
+     }
+    }
+   },
+   "steps": []
+  },
+  {
+   "name": "pick-ctrl-c",
+   "kind": "picker",
+   "steps": [
+    [
+     "type",
+     "abc"
+    ],
+    [
+     "keys",
+     "\u0003"
+    ]
+   ]
+  },
+  {
+   "name": "pick-ctrl-q",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u0011"
+    ]
+   ]
+  },
+  {
+   "name": "pick-escape-split",
+   "kind": "picker",
+   "steps": [
+    [
+     "keys",
+     "\u001bO"
+    ],
+    [
+     "wait",
+     0.2
+    ],
+    [
+     "keys",
+     "\u001b"
+    ],
+    [
+     "wait",
+     0.2
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "cli-version",
+   "kind": "cli",
+   "args": [
+    "--version"
+   ],
+   "mask": [
+    "herdr-newtab-plus "
+   ]
+  },
+  {
+   "name": "cli-help",
+   "kind": "cli",
+   "args": [
+    "--help"
+   ],
+   "mask": [
+    "usage: "
+   ]
+  },
+  {
+   "name": "cli-h",
+   "kind": "cli",
+   "args": [
+    "-h",
+    "--list"
+   ],
+   "mask": [
+    "usage: "
+   ]
+  },
+  {
+   "name": "cli-list",
+   "kind": "cli",
+   "args": [
+    "--list"
+   ],
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "cli-list-zoxide",
+   "kind": "cli",
+   "args": [
+    "--list"
+   ],
+   "zoxide": "  120.5 {root}/zephyr\n   88.0 {root}/willow\n  1_000 {root}/quartz\n  nan {root}/pier\ngarbage\n   88.0 {root}/vesper\n   12.0 {home}/not-there\n    2.5 {root}/atlas\n"
+  },
+  {
+   "name": "cli-list-odd",
+   "kind": "cli",
+   "args": [
+    "--list"
+   ],
+   "data": "odd"
+  },
+  {
+   "name": "cli-list-unreachable",
+   "kind": "cli",
+   "args": [
+    "--list"
+   ],
+   "socket_up": false
+  },
+  {
+   "name": "cli-list-error",
+   "kind": "cli",
+   "args": [
+    "--list"
+   ],
+   "answers": {
+    "session.snapshot": {
+     "reply": {
+      "error": {
+       "message": "no session"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "cli-list-hidden",
+   "kind": "cli",
+   "args": [
+    "--list"
+   ],
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "hidden": true
+   }
+  },
+  {
+   "name": "cli-doctor",
+   "kind": "cli",
+   "args": [
+    "--doctor"
+   ],
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000100
+      },
+      {
+       "path": "{root}/gone-now",
+       "agent": "claude",
+       "ts": 1700000000
+      }
+     ]
+    }
+   },
+   "mask": [
+    "python ",
+    "runtime ",
+    "herdr-newtab-plus "
+   ]
+  },
+  {
+   "name": "cli-doctor-config",
+   "kind": "cli",
+   "args": [
+    "--doctor"
+   ],
+   "agents_on_path": [
+    "claude",
+    "codex",
+    "gemini",
+    "cursor-agent",
+    "opencode",
+    "copilot",
+    "amp",
+    "droid",
+    "grok",
+    "kimi",
+    "pi",
+    "cline",
+    "kilo",
+    "kiro",
+    "devin",
+    "agy",
+    "omp",
+    "mastracode",
+    "hermes",
+    "qoder",
+    "maki"
+   ],
+   "config": {
+    "roots": [
+     "~/work",
+     "~/x"
+    ],
+    "create": "tab",
+    "preview": false,
+    "agent_icons": "none",
+    "skip_permission_flags": {
+     "gemini": [
+      "--yolo"
+     ]
+    }
+   },
+   "mask": [
+    "python ",
+    "runtime ",
+    "herdr-newtab-plus "
+   ]
+  },
+  {
+   "name": "cli-doctor-font",
+   "kind": "cli",
+   "args": [
+    "--doctor"
+   ],
+   "config": {
+    "agent_icons": "font",
+    "preview": true
+   },
+   "mask": [
+    "python ",
+    "runtime ",
+    "herdr-newtab-plus "
+   ]
+  },
+  {
+   "name": "cli-doctor-unreachable",
+   "kind": "cli",
+   "args": [
+    "--doctor"
+   ],
+   "socket_up": false,
+   "mask": [
+    "python ",
+    "runtime ",
+    "herdr-newtab-plus "
+   ]
+  },
+  {
+   "name": "cli-no-tty",
+   "kind": "cli",
+   "args": []
+  },
+  {
+   "name": "cli-start-agent-missing",
+   "kind": "cli",
+   "args": [
+    "--start-agent"
+   ]
+  },
+  {
+   "name": "cli-start-agent-ok",
+   "kind": "cli",
+   "args": [
+    "--start-agent",
+    "{\"name\": \"atlas\", \"kind\": \"claude\", \"pane\": \"w1:p1\", \"args\": [\"--x\"]}"
+   ]
+  },
+  {
+   "name": "cli-start-agent-no-args",
+   "kind": "cli",
+   "args": [
+    "--start-agent",
+    "{\"name\": \"a\", \"kind\": \"codex\", \"pane\": 3}"
+   ]
+  },
+  {
+   "name": "cli-start-agent-bad-args",
+   "kind": "cli",
+   "args": [
+    "--start-agent",
+    "{\"name\": \"a\", \"kind\": \"codex\", \"pane\": \"p\", \"args\": \"x\"}"
+   ]
+  },
+  {
+   "name": "cli-start-agent-fails",
+   "kind": "cli",
+   "args": [
+    "--start-agent",
+    "{\"name\": \"a\", \"kind\": \"codex\", \"pane\": \"p\"}"
+   ],
+   "answers": {
+    "agent.start": {
+     "reply": {
+      "error": {
+       "message": "pane gone"
+      }
+     }
+    }
+   }
+  }
+ ]
+}
