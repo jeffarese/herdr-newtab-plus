@@ -1,4 +1,4 @@
-//! Ported from tests/test_keys.py.
+//! Ported from the Python release's tests/test_keys.py.
 #![allow(unused_imports)]
 
 use crate::keys::{Event, KeyDecoder};

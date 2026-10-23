@@ -1,4 +1,4 @@
-//! Ported from tests/test_session.py.
+//! Ported from the Python release's tests/test_session.py.
 #![allow(unused_imports)]
 
 use crate::paths;

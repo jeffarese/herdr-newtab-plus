@@ -1,4 +1,4 @@
-//! Ported from tests/test_icons.py.
+//! Ported from the Python release's tests/test_icons.py.
 #![allow(unused_imports)]
 
 use crate::icons;

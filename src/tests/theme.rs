@@ -1,4 +1,4 @@
-//! Ported from tests/test_theme.py.
+//! Ported from the Python release's tests/test_theme.py.
 #![allow(unused_imports)]
 
 use crate::pyjson::{Map, Value};

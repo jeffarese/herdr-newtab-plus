@@ -1,4 +1,4 @@
-//! Ported from tests/test_state.py.
+//! Ported from the Python release's tests/test_state.py.
 #![allow(unused_imports)]
 
 use crate::state::{Recents, MAX_ENTRIES};

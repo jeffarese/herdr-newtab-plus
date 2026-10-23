@@ -1,4 +1,4 @@
-//! Ported from tests/test_agents.py.
+//! Ported from the Python release's tests/test_agents.py.
 #![allow(unused_imports)]
 
 use crate::agents::{self, available, initial_index, Agent, KNOWN, PLUGIN_VARIABLES, PREFERRED};

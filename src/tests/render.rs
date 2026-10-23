@@ -1,4 +1,4 @@
-//! Ported from tests/test_render.py.
+//! Ported from the Python release's tests/test_render.py.
 #![allow(unused_imports)]
 
 use crate::testutil::*;

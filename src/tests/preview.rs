@@ -1,4 +1,4 @@
-//! Ported from tests/test_preview.py.
+//! Ported from the Python release's tests/test_preview.py.
 //! The folder preview: what it reads, how it is laid out, and how it is toggled.
 #![allow(unused_imports)]
 

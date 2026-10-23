@@ -1,4 +1,4 @@
-//! Ported from tests/test_cli.py.
+//! Ported from the Python release's tests/test_cli.py.
 #![allow(unused_imports)]
 
 use crate::agents::Agent;
