@@ -127,11 +127,7 @@ fn dict(pairs: Vec<(&str, Value)>) -> Value {
 
 /// `tests/fixtures.py`'s `pane()`.
 pub fn pane(pane_id: &str, cwd: &str, workspace_id: &str) -> Value {
-    dict(vec![
-        ("pane_id", Value::str(pane_id)),
-        ("workspace_id", Value::str(workspace_id)),
-        ("cwd", Value::str(cwd)),
-    ])
+    dict(vec![("pane_id", Value::str(pane_id)), ("workspace_id", Value::str(workspace_id)), ("cwd", Value::str(cwd))])
 }
 
 /// `tests/fixtures.py`'s default single space, Atlas.
@@ -146,10 +142,7 @@ pub fn atlas() -> Vec<Value> {
 
 /// `tests/fixtures.py`'s `snapshot()`.
 pub fn snapshot(panes: Vec<Value>, workspaces: Option<Vec<Value>>) -> Value {
-    let focused = panes
-        .first()
-        .map(|pane| pane.get("pane_id").clone())
-        .unwrap_or(Value::Null);
+    let focused = panes.first().map(|pane| pane.get("pane_id").clone()).unwrap_or(Value::Null);
     dict(vec![
         ("version", Value::str("0.7.5")),
         ("focused_workspace_id", Value::str("w1")),

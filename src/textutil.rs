@@ -84,22 +84,6 @@ pub fn strip_ansi(text: &str) -> String {
     out
 }
 
-/// Drop control characters so foreign text can never break the layout.
-pub fn sanitize(text: &str, replacement: &str) -> String {
-    let stripped = strip_ansi(text);
-    let mut out = String::with_capacity(stripped.len());
-    for c in stripped.chars() {
-        if c == '\t' {
-            out.push_str("    ");
-        } else if c < ' ' || c == '\x7f' {
-            out.push_str(replacement);
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
 /// Cut text to a display width, appending an ellipsis when it was cut.
 pub fn truncate(text: &str, width: isize) -> String {
     truncate_with(text, width, "…")
@@ -242,45 +226,6 @@ pub fn wrap(text: &str, width: isize) -> Vec<String> {
     lines
 }
 
-fn slice_chars(chars: &[char], start: usize, stop: usize) -> String {
-    let stop = stop.min(chars.len());
-    if start >= stop {
-        return String::new();
-    }
-    chars[start..stop].iter().collect()
-}
-
-/// Truncate text to width while keeping highlighted characters visible.
-///
-/// Returns the visible text, the highlight offsets rebased onto it, and the
-/// number of characters trimmed from the start.
-pub fn window_positions(text: &str, width: isize, positions: &[usize]) -> (String, Vec<usize>, usize) {
-    if display_width(text) as isize <= width || width <= 1 {
-        return (truncate(text, width), positions.to_vec(), 0);
-    }
-    let last = positions.iter().copied().max();
-    if last.map(|l| (l as isize) < width - 1).unwrap_or(true) {
-        let visible = truncate(text, width);
-        let limit = pystr::len(&visible);
-        return (visible, positions.iter().copied().filter(|&p| p < limit).collect(), 0);
-    }
-    let last = last.unwrap();
-    let chars: Vec<char> = text.chars().collect();
-    let mut start = 0;
-    while (display_width(&slice_chars(&chars, start, last + 1)) as isize) > width - 2 && start < last {
-        start += 1;
-    }
-    let head = if start > 0 { "…" } else { "" };
-    let body = truncate(&slice_chars(&chars, start, chars.len()), width - display_width(head) as isize);
-    let head_len = pystr::len(head);
-    let shifted: Vec<usize> =
-        positions.iter().copied().filter(|&p| p >= start).map(|p| p - start + head_len).collect();
-    let limit = head_len + pystr::len(&body);
-    let mut visible = String::from(head);
-    visible.push_str(&body);
-    (visible, shifted.into_iter().filter(|&p| p < limit).collect(), start)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,45 +241,52 @@ mod tests {
         assert_eq!(strip_ansi("\x1b]unterminated"), "unterminated");
     }
 
-    // Ported from the Python release's tests/test_textutil.py.
+    // Ported from herdr-bar's Python tests/test_textutil.py.
 
-    fn at(text: &str, positions: &[usize]) -> String {
-        let chars: Vec<char> = text.chars().collect();
-        positions.iter().map(|&i| chars[i]).collect()
+    #[test]
+    fn ascii() {
+        assert_eq!(display_width("hello"), 5);
     }
 
     #[test]
-    fn ascii() { assert_eq!(display_width("hello"), 5); }
+    fn wide_characters_count_double() {
+        assert_eq!(display_width("日本"), 4);
+    }
 
     #[test]
-    fn wide_characters_count_double() { assert_eq!(display_width("日本"), 4); }
+    fn combining_marks_are_free() {
+        assert_eq!(display_width("e\u{301}"), 1);
+    }
 
     #[test]
-    fn combining_marks_are_free() { assert_eq!(display_width("e\u{301}"), 1); }
+    fn control_characters_are_free() {
+        assert_eq!(display_width("a\x07b"), 2);
+    }
 
     #[test]
-    fn control_characters_are_free() { assert_eq!(display_width("a\x07b"), 2); }
+    fn visible_width_ignores_styling() {
+        assert_eq!(visible_width("\x1b[38;5;12mhi\x1b[0m"), 2);
+    }
 
     #[test]
-    fn visible_width_ignores_styling() { assert_eq!(visible_width("\x1b[38;5;12mhi\x1b[0m"), 2); }
+    fn strips_escape_sequences() {
+        assert_eq!(strip_ansi("\x1b[31mred\x1b[0m"), "red");
+    }
 
     #[test]
-    fn strips_escape_sequences() { assert_eq!(strip_ansi("\x1b[31mred\x1b[0m"), "red"); }
+    fn strips_osc_sequences() {
+        assert_eq!(strip_ansi("\x1b]0;title\x07text"), "text");
+    }
 
     #[test]
-    fn strips_osc_sequences() { assert_eq!(strip_ansi("\x1b]0;title\x07text"), "text"); }
+    fn short_text_is_untouched() {
+        assert_eq!(truncate("hi", 10), "hi");
+    }
 
     #[test]
-    fn replaces_control_characters() { assert_eq!(sanitize("a\x00b", " "), "a b"); }
-
-    #[test]
-    fn expands_tabs() { assert_eq!(sanitize("a\tb", " "), "a    b"); }
-
-    #[test]
-    fn short_text_is_untouched() { assert_eq!(truncate("hi", 10), "hi"); }
-
-    #[test]
-    fn adds_an_ellipsis() { assert_eq!(truncate("hello world", 8), "hello w…"); }
+    fn adds_an_ellipsis() {
+        assert_eq!(truncate("hello world", 8), "hello w…");
+    }
 
     #[test]
     fn result_never_exceeds_the_width() {
@@ -359,45 +311,17 @@ mod tests {
     }
 
     #[test]
-    fn pads_to_the_width() { assert_eq!(visible_width(&pad("hi", 6)), 6); }
-
-    #[test]
-    fn pads_styled_text_by_visible_width() { assert_eq!(visible_width(&pad("\x1b[31mhi\x1b[0m", 6)), 6); }
-
-    #[test]
-    fn never_shrinks() { assert_eq!(pad("hello", 2), "hello"); }
-
-    #[test]
-    fn short_text_keeps_its_positions() {
-        assert_eq!(window_positions("week gen", 20, &[0, 1]), ("week gen".to_string(), vec![0, 1], 0));
+    fn pads_to_the_width() {
+        assert_eq!(visible_width(&pad("hi", 6)), 6);
     }
 
     #[test]
-    fn positions_stay_on_the_same_characters() {
-        let source = "Redesign the week generation loading screen";
-        let marks = [15, 16, 17, 18];
-        let (text, positions, _) = window_positions(source, 20, &marks);
-        assert_eq!(at(&text, &positions), at(source, &marks));
+    fn pads_styled_text_by_visible_width() {
+        assert_eq!(visible_width(&pad("\x1b[31mhi\x1b[0m", 6)), 6);
     }
 
     #[test]
-    fn window_slides_to_keep_late_matches_visible() {
-        let source = "a very long tab title that ends with needle";
-        let n = source.chars().count();
-        let needle: Vec<usize> = (n - 6..n).collect();
-        let (text, positions, offset) = window_positions(source, 20, &needle);
-        assert!(offset > 0);
-        assert!(text.starts_with('…'), "{text}");
-        assert_eq!(at(&text, &positions), "needle");
-    }
-
-    #[test]
-    fn result_fits_the_width() {
-        let source = "a very long tab title that ends with needle";
-        let last = source.chars().count() - 1;
-        for width in 4..30 {
-            let (text, _, _) = window_positions(source, width, &[last]);
-            assert!(display_width(&text) <= width as usize, "{width}: {text}");
-        }
+    fn never_shrinks() {
+        assert_eq!(pad("hello", 2), "hello");
     }
 }

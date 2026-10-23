@@ -260,8 +260,7 @@ pub fn render_input(theme: &Theme, width: isize, query: &str, cursor: usize, gho
         return prompt + "\x1b[7m \x1b[27m" + &text(theme, &[Segment::new("dim", hint)]);
     }
 
-    let (visible, position) =
-        window(query, cursor.min(char_len(query)), field - display_width(ghost) as isize);
+    let (visible, position) = window(query, cursor.min(char_len(query)), field - display_width(ghost) as isize);
     let visible_len = char_len(&visible);
     let position = position.min(visible_len);
     let before = slice(&visible, 0, position);
@@ -278,10 +277,7 @@ pub fn render_input(theme: &Theme, width: isize, query: &str, cursor: usize, gho
         + &under
         + "\x1b[27m"
         + &text(theme, &[Segment::new("text", after)])
-        + &text(
-            theme,
-            &[Segment::new("ghost", truncate(tail, (field - display_width(&visible) as isize).max(0)))],
-        )
+        + &text(theme, &[Segment::new("ghost", truncate(tail, (field - display_width(&visible) as isize).max(0)))])
 }
 
 // -- suggestion rows -------------------------------------------------------
@@ -371,11 +367,8 @@ pub fn render_row(
 ) -> String {
     let background = if selected { theme.selection_bg.as_str() } else { "" };
 
-    let marker = if selected {
-        Segment::bold("accent", format!("{} ", SELECTED_BAR), true)
-    } else {
-        Segment::new("", "  ")
-    };
+    let marker =
+        if selected { Segment::bold("accent", format!("{} ", SELECTED_BAR), true) } else { Segment::new("", "  ") };
     let mut segments: Vec<Segment> = vec![marker];
     if theme.agent_icons {
         let logo = theme.logo(agent);
@@ -390,8 +383,7 @@ pub fn render_row(
     let meta_width = if meta.is_empty() { 0 } else { width_of(&meta) + 2 };
 
     let lead = width_of(&segments);
-    let name_room =
-        name_room.unwrap_or_else(|| MIN_NAME.max(MAX_NAME.min(floordiv(width - lead - meta_width, 2))));
+    let name_room = name_room.unwrap_or_else(|| MIN_NAME.max(MAX_NAME.min(floordiv(width - lead - meta_width, 2))));
     let name = truncate(&row.suggestion.name, name_room);
     segments.extend(highlight(&name, &row.name_positions, "text", selected));
     segments.push(Segment::new("", " ".repeat((name_room - display_width(&name) as isize + 1).max(1) as usize)));
@@ -415,13 +407,7 @@ pub fn render_row(
     }
     // A selected row is a band across the list, so it has to be filled to the
     // edge rather than only behind its own text.
-    format!(
-        "{}{}{}{}",
-        background,
-        rendered,
-        " ".repeat((width - width_of(&segments)).max(0) as usize),
-        RESET
-    )
+    format!("{}{}{}{}", background, rendered, " ".repeat((width - width_of(&segments)).max(0) as usize), RESET)
 }
 
 /// What the list says when it has nothing to show, and what to do about it.
@@ -553,12 +539,7 @@ pub fn chips_row(
             column += sep;
         }
         if index == selected && pill {
-            out.push(format!(
-                "{}{}{}",
-                theme.selection_bg,
-                text_of(theme, &cells[index], &theme.selection_bg),
-                RESET
-            ));
+            out.push(format!("{}{}{}", theme.selection_bg, text_of(theme, &cells[index], &theme.selection_bg), RESET));
         } else {
             out.push(text(theme, &cells[index]));
         }
@@ -583,6 +564,7 @@ pub fn chips_row(
 }
 
 /// The agent row, always visible so the choice never has to be discovered.
+#[cfg(test)]
 pub fn render_chips(theme: &Theme, width: isize, chips: &[Agent], selected: usize, skipping: bool) -> String {
     chips_row(theme, width, chips, selected, skipping).0
 }
@@ -749,7 +731,7 @@ pub fn render_footer(theme: &Theme, width: isize, hints: &[(String, String)], co
         }
     }
     let used = width_of(&segments);
-    if used + width_of(&tail) + 1 <= width {
+    if used + width_of(&tail) < width {
         segments.push(Segment::new("", " ".repeat((width - used - width_of(&tail)).max(0) as usize)));
         segments.extend(tail);
     }
@@ -966,9 +948,12 @@ pub const HELP_NOTES: [(&str, &str); 3] = [
     ),
 ];
 
+/// A key and what it does.
+pub type HelpKey = (&'static str, &'static str);
+
 /// Two columns, because the keys are the part of this you scan rather than
 /// read and the rows they save are rows the prose above wanted.
-pub const HELP_KEYS: [((&str, &str), (&str, &str)); 6] = [
+pub const HELP_KEYS: [(HelpKey, HelpKey); 6] = [
     (("⇥", "complete, or move the agent"), ("^W", "back one path segment")),
     (("→", "fill in the highlighted folder"), ("^U", "clear the input")),
     (("↑↓", "move the folders"), ("^R", "rescan the filesystem")),
@@ -1089,7 +1074,11 @@ fn help_mode(theme: &Theme, width: isize, name: &str, body: &str, current: bool)
                 &fit(
                     &[
                         Segment::new("", " ".repeat(indent as usize)),
-                        Segment::bold("accent", if current && index == 0 { mark.clone() } else { "  ".to_string() }, true),
+                        Segment::bold(
+                            "accent",
+                            if current && index == 0 { mark.clone() } else { "  ".to_string() },
+                            true,
+                        ),
                         Segment::bold(
                             if current { "accent" } else { "muted" },
                             pad(if index == 0 { name } else { "" }, column),

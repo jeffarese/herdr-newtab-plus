@@ -66,20 +66,12 @@ impl Map {
         self.entries.iter().map(|(k, v)| (k, v))
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
-        self.entries.iter().map(|(k, _)| k)
-    }
-
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
-    }
-
-    pub fn retain(&mut self, mut keep: impl FnMut(&str, &Value) -> bool) {
-        self.entries.retain(|(k, v)| keep(k, v));
     }
 }
 
@@ -96,8 +88,7 @@ impl FromIterator<(String, Value)> for Map {
 impl PartialEq for Map {
     /// Python dict equality: same keys, equal values, order irrelevant.
     fn eq(&self, other: &Map) -> bool {
-        self.len() == other.len()
-            && self.iter().all(|(k, v)| other.get(k).map(|o| py_eq(v, o)).unwrap_or(false))
+        self.len() == other.len() && self.iter().all(|(k, v)| other.get(k).map(|o| py_eq(v, o)).unwrap_or(false))
     }
 }
 
@@ -128,6 +119,7 @@ impl Value {
         }
     }
 
+    #[cfg(test)]
     pub fn as_dict_mut(&mut self) -> Option<&mut Map> {
         match self {
             Value::Dict(m) => Some(m),
@@ -137,21 +129,6 @@ impl Value {
 
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
-    }
-
-    /// `isinstance(value, int)` -- which bools are, in Python.
-    pub fn is_int(&self) -> bool {
-        matches!(self, Value::Int(_) | Value::BigInt(_) | Value::Bool(_))
-    }
-
-    /// `isinstance(value, int) and not isinstance(value, bool)` is never what
-    /// the Python code asked; this is the integer value it would have used.
-    pub fn as_int(&self) -> Option<i128> {
-        match self {
-            Value::Int(i) => Some(*i),
-            Value::Bool(b) => Some(*b as i128),
-            _ => None,
-        }
     }
 
     /// `value is True`.
@@ -248,13 +225,6 @@ pub fn loads(text: &str) -> Result<Value, ParseError> {
         return Err(ParseError);
     }
     Ok(value)
-}
-
-/// `json.loads(data)` for bytes: UTF-8, with or without a BOM.
-pub fn loads_bytes(data: &[u8]) -> Result<Value, ParseError> {
-    let data = data.strip_prefix(b"\xef\xbb\xbf").unwrap_or(data);
-    let text = std::str::from_utf8(data).map_err(|_| ParseError)?;
-    loads(text)
 }
 
 impl<'a> Parser<'a> {
@@ -399,9 +369,7 @@ impl<'a> Parser<'a> {
                         b't' => out.push('\t'),
                         b'u' => {
                             let mut code = self.hex4()?;
-                            if (0xD800..0xDC00).contains(&code)
-                                && self.chars[self.at..].starts_with(b"\\u")
-                            {
+                            if (0xD800..0xDC00).contains(&code) && self.chars[self.at..].starts_with(b"\\u") {
                                 let save = self.at;
                                 self.at += 2;
                                 let low = self.hex4()?;
@@ -793,8 +761,7 @@ pub fn py_repr(value: &Value) -> String {
             format!("[{}]", parts.join(", "))
         }
         Value::Dict(map) => {
-            let parts: Vec<String> =
-                map.iter().map(|(k, v)| format!("{}: {}", str_repr(k), py_repr(v))).collect();
+            let parts: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", str_repr(k), py_repr(v))).collect();
             format!("{{{}}}", parts.join(", "))
         }
     }
@@ -860,7 +827,7 @@ mod tests {
         for (index, pane) in panes.iter().enumerate() {
             assert_eq!(dumps(pane, false), dumps(&loads(&element(index)).unwrap(), false));
         }
-        assert_eq!(parsed.get("result").get("x").as_int(), Some(1));
+        assert_eq!(parsed.get("result").get("x"), &Value::Int(1));
         // Anything the sequential parser refuses is still refused.
         let good = big_array(3000);
         let broken = [

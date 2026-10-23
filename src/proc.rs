@@ -114,11 +114,6 @@ impl ExitWatch {
     }
 }
 
-/// `run`, folding every failure into None.
-pub fn run_capture(argv: &[String], timeout: f64) -> Option<Output> {
-    run(argv, timeout).ok()
-}
-
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;

@@ -10,7 +10,8 @@ use crate::sequences::{appearance_from_reply, enter_sequence, exit_sequence, rep
 /// shutil.get_terminal_size's environment override and fallback, for when
 /// the terminal itself will not say.
 fn fallback_size(query: impl Fn() -> Option<(i64, i64)>) -> (i64, i64) {
-    let env = |name: &str| std::env::var(name).ok().and_then(|v| crate::pystr::parse_int(&v)).map(|v| v as i64).unwrap_or(0);
+    let env =
+        |name: &str| std::env::var(name).ok().and_then(|v| crate::pystr::parse_int(&v)).map(|v| v as i64).unwrap_or(0);
     let mut columns = env("COLUMNS");
     let mut lines = env("LINES");
     if columns <= 0 || lines <= 0 {
@@ -237,8 +238,6 @@ mod backend {
         }
         appearance_from_reply(&buffer)
     }
-
-    pub fn restore_console() {}
 }
 
-pub use backend::{detect_appearance, isatty, restore_console, Terminal};
+pub use backend::{detect_appearance, isatty, Terminal};

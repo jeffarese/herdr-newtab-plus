@@ -134,7 +134,10 @@ fn doctor(client: &mut HerdrClient, config: &Config) -> i32 {
         format!("herdr bin        {}", client.bin_path),
         format!("socket           {}", client.socket_path.clone().unwrap_or_else(|| "(unset)".to_string())),
         format!("socket usable    {}", if client.socket_ok() { "yes" } else { "no, using the CLI" }),
-        format!("config           {}", Config::path(None).unwrap_or_else(|| "(no HERDR_PLUGIN_CONFIG_DIR)".to_string())),
+        format!(
+            "config           {}",
+            Config::path(None).unwrap_or_else(|| "(no HERDR_PLUGIN_CONFIG_DIR)".to_string())
+        ),
         format!("state            {}", state_path().unwrap_or_else(|| "(no HERDR_PLUGIN_STATE_DIR)".to_string())),
         format!("create mode      {}", create_mode_line(config, &recents)),
         format!("roots            {}", config.roots.join(", ")),
@@ -152,10 +155,16 @@ fn doctor(client: &mut HerdrClient, config: &Config) -> i32 {
             1
         }
         Ok((snapshot, catalog)) => {
-            let version =
-                snapshot.as_dict().and_then(|m| m.get("version")).map(pyjson::py_str).unwrap_or_else(|| "?".to_string());
+            let version = snapshot
+                .as_dict()
+                .and_then(|m| m.get("version"))
+                .map(pyjson::py_str)
+                .unwrap_or_else(|| "?".to_string());
             lines.push(format!("herdr            {}", version));
-            lines.push(format!("base cwd         {}", focused_cwd(&snapshot).unwrap_or_else(|| "(unknown)".to_string())));
+            lines.push(format!(
+                "base cwd         {}",
+                focused_cwd(&snapshot).unwrap_or_else(|| "(unknown)".to_string())
+            ));
             let owned = catalog.iter().filter(|item| item.source == paths::SOURCE_SPACE).count();
             lines.push(format!("catalog          {} folders ({} already have a space)", catalog.len(), owned));
             out(&(lines.join("\n") + "\n"));
@@ -277,7 +286,7 @@ pub const SHELL_POLL_SECONDS: f64 = 0.35;
 pub const NAME_ATTEMPTS: u32 = 4;
 
 /// Whether the pane is merely not ready yet, as opposed to unusable.
-fn transient(message: &str) -> bool {
+pub(crate) fn transient(message: &str) -> bool {
     let text = crate::pystr::lower(message);
     text.contains("available shell") || text.contains("foreground") || text.contains("not ready")
 }
@@ -294,9 +303,8 @@ fn parse_request(payload: &str) -> Result<StartRequest, String> {
     let Value::Dict(map) = &request else {
         return Err("payload must be an object".to_string());
     };
-    let field = |key: &str| -> Result<String, String> {
-        map.get(key).map(pyjson::py_str).ok_or_else(|| pyjson::str_repr(key))
-    };
+    let field =
+        |key: &str| -> Result<String, String> { map.get(key).map(pyjson::py_str).ok_or_else(|| pyjson::str_repr(key)) };
     let name = field("name")?;
     let kind = field("kind")?;
     let pane = field("pane")?;

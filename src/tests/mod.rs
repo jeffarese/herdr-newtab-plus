@@ -5,6 +5,7 @@ mod app;
 mod cli;
 mod icons;
 mod keys;
+mod manifest;
 mod paths;
 mod preview;
 mod render;

@@ -1,6 +1,6 @@
 id = "herdr-newtab-plus"
 name = "New Tab Plus"
-version = "0.1.0"
+version = "0.2.0"
 # 0.7.4 is the first release with session-modal popup plugin panes. The picker
 # also needs `session.snapshot` (0.7.2) to infer which folders already have a
 # space open.
@@ -8,10 +8,18 @@ min_herdr_version = "0.7.4"
 description = "New tab with a folder picker that completes real paths, and an optional agent to start"
 platforms = ["linux", "macos"]
 
+# The picker is a Rust binary at bin/herdr-newtab-plus. On install (updating is
+# reinstalling), Herdr runs this step in the plugin directory: it downloads the
+# release binary for this version and platform, checks it against the
+# release's SHA256SUMS and the version it reports, and falls back to
+# `cargo build --release` (Rust 1.88+). `herdr plugin link` never runs it, so a
+# linked checkout runs `sh scripts/install.sh` itself.
+[[build]]
+command = ["sh", "scripts/install.sh"]
+
 # Opening the picker is a one-liner through the Herdr CLI, so the action stays a
-# shell exec instead of paying a second interpreter startup. HERDR_BIN_PATH can
-# outlive the binary it points at when Herdr is upgraded under a running
-# server, so fall back to whatever is on PATH.
+# shell exec. HERDR_BIN_PATH can outlive the binary it points at when Herdr is
+# upgraded under a running server, so fall back to whatever is on PATH.
 [[actions]]
 id = "open"
 title = "New tab"
@@ -40,4 +48,5 @@ placement = "popup"
 # and for the picker ten folders with air above its chrome.
 width = 110
 height = 30
-command = ["python3", "run.py"]
+# Herdr resolves a command path with a separator from the plugin directory.
+command = ["bin/herdr-newtab-plus"]

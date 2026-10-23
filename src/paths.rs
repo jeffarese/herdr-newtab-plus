@@ -89,6 +89,7 @@ impl Suggestion {
         }
     }
 
+    #[cfg(test)]
     pub fn new(path: &str, name: &str, source: &'static str) -> Suggestion {
         Suggestion::with(path.to_string(), name.to_string(), source, String::new(), false)
     }
@@ -104,12 +105,6 @@ impl Suggestion {
 
     fn shown_field(&self) -> &Prepared {
         self.shown_field.get_or_init(|| Prepared::new(self.shown()))
-    }
-
-    /// Fill the matcher's caches now, so scoring never has to.
-    pub fn prepare(&self) {
-        self.name_field();
-        self.shown_field();
     }
 }
 

@@ -95,8 +95,12 @@ impl Config {
             for (kind, argv) in flags.iter() {
                 let Value::List(argv) = argv else { continue };
                 if argv.iter().all(|flag| flag.as_str().is_some()) {
-                    let kept: Vec<String> =
-                        argv.iter().filter_map(|f| f.as_str()).filter(|f| !f.is_empty()).map(|f| f.to_string()).collect();
+                    let kept: Vec<String> = argv
+                        .iter()
+                        .filter_map(|f| f.as_str())
+                        .filter(|f| !f.is_empty())
+                        .map(|f| f.to_string())
+                        .collect();
                     skip_permission_flags.push((kind.clone(), kept));
                 }
             }
@@ -184,11 +188,6 @@ impl Config {
             return false;
         }
         installed
-    }
-
-    /// The configured skip flags for a kind, when the file names it.
-    pub fn skip_flags_for(&self, kind: &str) -> Option<&[String]> {
-        self.skip_permission_flags.iter().find(|(k, _)| k == kind).map(|(_, argv)| argv.as_slice())
     }
 
     pub fn colors_has(&self, role: &str) -> bool {

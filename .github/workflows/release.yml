@@ -1,0 +1,160 @@
+name: release
+
+# Builds the herdr-newtab-plus binary for every platform the plugin supports and
+# attaches them to the GitHub release for the tag.
+#
+# Asset names are a contract with the downloader, do not change them:
+#   herdr-newtab-plus-<os>-<arch>   os in {linux, macos},
+#                                   arch in {x86_64, aarch64}
+#   SHA256SUMS                      "<sha256>  <asset name>" per binary
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+  # Pull requests and main build every asset but publish nothing, so a broken
+  # cross target shows up before the tag does.
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and attach binaries to (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  RELEASING: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  # The downloader fetches v<manifest version>, so a tag that disagrees with
+  # any of the version sources would publish binaries nobody can install.
+  versions:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+      - name: Tag matches every version source
+        run: |
+          # The first line of FILE that matches PATTERN, reduced to its group.
+          grab() { sed -n -E "s/$2/\1/p" "$1" | head -n 1; }
+          plugin="v$(grab herdr-plugin.toml '^version[[:space:]]*=[[:space:]]*"([^"]+)".*')"
+          cargo="v$(grab Cargo.toml '^version[[:space:]]*=[[:space:]]*"([^"]+)".*')"
+          # src/cli.rs takes its version from Cargo.toml (CARGO_PKG_VERSION).
+          printf '%-28s %s\n' tag "$TAG" herdr-plugin.toml "$plugin" Cargo.toml "$cargo"
+          for found in "$plugin" "$cargo"; do
+            if [ "$found" != "$TAG" ]; then
+              echo "version mismatch: the tag and every version source must agree" >&2
+              exit 1
+            fi
+          done
+
+  build:
+    needs: versions
+    # Run when versions passed, or when it was skipped because nothing is released.
+    if: ${{ !cancelled() && (needs.versions.result == 'success' || needs.versions.result == 'skipped') }}
+    name: build ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # musl targets link statically with Rust's bundled musl; the only
+          # dependency is the libc crate, so no C toolchain for musl is needed.
+          # Each one builds natively on a runner of its own architecture.
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            asset: herdr-newtab-plus-linux-x86_64
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+            asset: herdr-newtab-plus-linux-aarch64
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            asset: herdr-newtab-plus-macos-x86_64
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            asset: herdr-newtab-plus-macos-aarch64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.RELEASING == 'true' && env.TAG || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.99.1
+          targets: ${{ matrix.target }}
+      - name: Build
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --release --locked --target "$TARGET"
+      - name: Stage asset
+        env:
+          TARGET: ${{ matrix.target }}
+          ASSET: ${{ matrix.asset }}
+        run: |
+          mkdir -p dist
+          cp "target/$TARGET/release/herdr-newtab-plus" "dist/$ASSET"
+          ls -l dist
+      - name: Check static linkage
+        if: contains(matrix.target, 'linux-musl')
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          file "dist/$ASSET"
+          file "dist/$ASSET" | grep -Eq 'statically linked|static-pie linked'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          expected="herdr-newtab-plus-linux-x86_64 herdr-newtab-plus-linux-aarch64 herdr-newtab-plus-macos-x86_64 herdr-newtab-plus-macos-aarch64"
+          for name in $expected; do
+            test -f "$name" || { echo "missing $name"; exit 1; }
+          done
+          sha256sum $expected > SHA256SUMS
+          cat SHA256SUMS
+      # Draft first, upload everything, then publish, so nobody downloads a
+      # half-filled release. A published release's assets are never replaced;
+      # a draft left by a failed run is refilled.
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "release $TAG is already published; refusing to replace its assets" >&2
+              exit 1
+            fi
+          else
+            gh release create "$TAG" --verify-tag --draft --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --clobber
+          gh release edit "$TAG" --draft=false

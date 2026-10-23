@@ -144,10 +144,7 @@ impl SpaceMap {
         self.entries.iter().map(|(key, space)| (key, space))
     }
 
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -357,7 +354,7 @@ pub fn normalize(path: &str) -> String {
 // once. Same bargain as the directory listings in `paths`: the picker is modal
 // and short-lived, and the rescan key clears both.
 thread_local! {
-    static RESOLVED: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    pub(crate) static RESOLVED: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
 /// The same folder with every symlink followed.
@@ -386,17 +383,13 @@ pub fn clear_resolved() {
 }
 
 /// Decide whether the picked folder becomes a tab or a whole new space.
+#[cfg(test)]
 pub fn resolve_target(folder: &str, snapshot: &Value, mode: &str) -> Target {
     resolve_target_with(folder, snapshot, mode, &space_folders(snapshot))
 }
 
 /// `resolve_target`, against a space map worked out once by the caller.
-pub fn resolve_target_with(
-    folder: &str,
-    snapshot: &Value,
-    mode: &str,
-    known: &SpaceMap,
-) -> Target {
+pub fn resolve_target_with(folder: &str, snapshot: &Value, mode: &str, known: &SpaceMap) -> Target {
     let normalized = normalize(folder);
     let base = pyos::basename(&normalized);
     let label = if base.is_empty() { normalized.clone() } else { base.to_string() };

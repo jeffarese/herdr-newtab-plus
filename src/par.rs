@@ -45,19 +45,6 @@ where
     })
 }
 
-/// Free a big structure on a short-lived thread instead of the caller's.
-///
-/// A snapshot or pool of thousands of rows takes a millisecond or more to
-/// free, allocation by allocation, and the caller is usually about to draw
-/// or read a key. Freeing has no effect anyone can observe, so it can just
-/// as well happen beside them. Small values are freed in place.
-pub fn drop_aside<T: Send + 'static>(value: T, big: bool) {
-    if big {
-        // No thread to be had: the value goes with the failed closure, here.
-        let _ = std::thread::Builder::new().spawn(move || drop(value));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

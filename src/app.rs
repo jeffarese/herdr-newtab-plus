@@ -97,17 +97,17 @@ pub struct Picker {
     /// and once ^O has been pressed, shown or hidden as asked wherever it fits.
     pub preview_enabled: bool,
     pub preview_chosen: bool,
-    preview_showing: bool,
-    list_right: isize,
+    pub(crate) preview_showing: bool,
+    pub(crate) list_right: isize,
 
     pub status: Option<String>,
     status_until: Instant,
     dirty: bool,
     painter: Painter,
-    list_height: isize,
-    row_top: isize,
-    chip_row: isize,
-    chip_spans: Vec<(isize, isize)>,
+    pub(crate) list_height: isize,
+    pub(crate) row_top: isize,
+    pub(crate) chip_row: isize,
+    pub(crate) chip_spans: Vec<(isize, isize)>,
 }
 
 impl Picker {
@@ -509,12 +509,8 @@ impl Picker {
         }
         let listed = paths::contents(&folder);
         let space = self.spaces.get(&folder).or_else(|| self.spaces.get(&resolved(&folder)));
-        let agents = self
-            .agents_in
-            .get(&folder)
-            .or_else(|| self.agents_in.get(&resolved(&folder)))
-            .cloned()
-            .unwrap_or_default();
+        let agents =
+            self.agents_in.get(&folder).or_else(|| self.agents_in.get(&resolved(&folder))).cloned().unwrap_or_default();
         let branch = listed.as_deref().and_then(|listed| paths::git_branch(&folder, Some(listed)));
         Some(Preview {
             name: paths::folder_name(&folder),
@@ -554,7 +550,7 @@ impl Picker {
         let row = y - 1;
         if row == self.chip_row as i128 {
             for (index, &(start, end)) in self.chip_spans.iter().enumerate() {
-                if (start as i128) <= x - 1 && x - 1 < end as i128 {
+                if (start as i128) < x && x - 1 < end as i128 {
                     self.chip = index;
                     self.chip_pinned = true;
                     self.dirty = true;
@@ -567,7 +563,7 @@ impl Picker {
         // The list's own rows only: not the air under a short list, and not
         // the preview beside it, which shows a folder rather than offering one.
         let line = row - self.row_top as i128;
-        if !(0..self.list_height as i128).contains(&line) || x - 1 >= self.list_right as i128 {
+        if !(0..self.list_height as i128).contains(&line) || x > self.list_right as i128 {
             return None;
         }
         let index = self.offset as i128 + line;
@@ -662,17 +658,17 @@ impl Picker {
             render::scrollbar_column(self.rows.len(), layout.list_height, self.offset, layout.list_height)
         };
         let mut out = Vec::with_capacity(height as usize);
-        for index in 0..height.max(0) as usize {
+        for (index, line) in preview.iter().enumerate().take(height.max(0) as usize) {
             let left = rows.get(index).map(|s| s.as_str()).unwrap_or("");
             let thumb = bar.get(index).copied() == Some(render::SCROLL_THUMB);
             let glyph = if thumb { render::SCROLL_THUMB } else { render::SEPARATOR.trim() };
             let separator = format!(" {} ", self.theme.paint(if thumb { "muted" } else { "rule" }, glyph));
-            out.push(format!("{}{}{}", render::pad_row(left, layout.list_width), separator, preview[index]));
+            out.push(format!("{}{}{}", render::pad_row(left, layout.list_width), separator, line));
         }
         out
     }
 
-    fn hints(&self) -> Vec<(String, String)> {
+    pub(crate) fn hints(&self) -> Vec<(String, String)> {
         // Offered exactly where it would do something: on a chip that cannot
         // honour it the hint goes away along with the chip's mark.
         let mut hints: Vec<(String, String)> = Vec::new();
@@ -698,7 +694,7 @@ impl Picker {
     }
 
     /// The corner that opens the panel -- while `?` is what it would do.
-    fn guide(&self) -> &'static str {
+    pub(crate) fn guide(&self) -> &'static str {
         if self.query.is_empty() {
             "? help"
         } else {
@@ -724,14 +720,18 @@ impl Picker {
         let layout = render::compute_layout(width, height, self.preview_fits(width - 2));
         self.preview_showing = layout.preview_width != 0;
         self.list_height = layout.list_height;
-        self.list_right = pad.len() as isize + if layout.list_width != 0 { layout.list_width } else { layout.inner_width };
+        self.list_right =
+            pad.len() as isize + if layout.list_width != 0 { layout.list_width } else { layout.inner_width };
         // Where the separator meets the rules above and below the list, so the
         // two panes read as one box divided rather than two drawn side by side.
         let junction = if layout.preview_width != 0 { layout.list_width + 1 } else { -1 };
 
         let ghost = self.ghost();
-        let mut lines =
-            vec![format!("{}{}", pad, render::render_input(&self.theme, layout.inner_width, &self.query, self.cursor, &ghost))];
+        let mut lines = vec![format!(
+            "{}{}",
+            pad,
+            render::render_input(&self.theme, layout.inner_width, &self.query, self.cursor, &ghost)
+        )];
         if layout.rules {
             lines.push(format!("{}{}", pad, render::render_rule(&self.theme, layout.inner_width, junction, "┬")));
         }
@@ -779,7 +779,11 @@ impl Picker {
             ));
         }
         if layout.note {
-            lines.push(format!("{}{}", pad, render::render_mode_note(&self.theme, layout.inner_width, self.create_mode)));
+            lines.push(format!(
+                "{}{}",
+                pad,
+                render::render_mode_note(&self.theme, layout.inner_width, self.create_mode)
+            ));
         }
         if layout.footer {
             let counter =

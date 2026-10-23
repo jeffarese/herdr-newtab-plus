@@ -28,10 +28,7 @@ fn in_ranges(table: &[(u32, u32)], c: char) -> bool {
 }
 
 fn mapped(table: &'static [(u32, &'static str)], c: char) -> Option<&'static str> {
-    table
-        .binary_search_by_key(&(c as u32), |&(code, _)| code)
-        .ok()
-        .map(|index| table[index].1)
+    table.binary_search_by_key(&(c as u32), |&(code, _)| code).ok().map(|index| table[index].1)
 }
 
 pub fn is_space(c: char) -> bool {
@@ -48,23 +45,13 @@ pub fn is_digit(c: char) -> bool {
     in_ranges(t::DIGIT, c)
 }
 
-pub fn is_decimal(c: char) -> bool {
-    if c.is_ascii() {
-        return c.is_ascii_digit();
-    }
-    in_ranges(t::DECIMAL, c)
-}
-
 /// The value of a decimal digit, as `int()` reads it.
 pub fn decimal_value(c: char) -> Option<u32> {
     if c.is_ascii_digit() {
         return Some(c as u32 - '0' as u32);
     }
     let table = t::DECIMAL_ZERO;
-    table
-        .binary_search_by_key(&(c as u32), |&(code, _)| code)
-        .ok()
-        .map(|index| c as u32 - table[index].1)
+    table.binary_search_by_key(&(c as u32), |&(code, _)| code).ok().map(|index| c as u32 - table[index].1)
 }
 
 pub fn is_alpha(c: char) -> bool {
@@ -72,13 +59,6 @@ pub fn is_alpha(c: char) -> bool {
         return c.is_ascii_alphabetic();
     }
     in_ranges(t::ALPHA, c)
-}
-
-pub fn is_alnum(c: char) -> bool {
-    if c.is_ascii() {
-        return c.is_ascii_alphanumeric();
-    }
-    in_ranges(t::ALNUM, c)
 }
 
 pub fn is_lower(c: char) -> bool {
@@ -219,24 +199,6 @@ fn final_sigma(chars: &[char], index: usize) -> bool {
     true
 }
 
-/// `str.casefold()`.
-pub fn casefold(text: &str) -> String {
-    if text.is_ascii() {
-        return text.to_ascii_lowercase();
-    }
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        if c.is_ascii() {
-            out.push(c.to_ascii_lowercase());
-        } else if let Some(mapped) = mapped(t::CASEFOLD_MAP, c) {
-            out.push_str(mapped);
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
 /// `str.strip()` with no arguments.
 pub fn strip(text: &str) -> &str {
     text.trim_matches(is_space)
@@ -251,21 +213,14 @@ pub fn split_whitespace(text: &str) -> Vec<&str> {
     text.split(is_space).filter(|part| !part.is_empty()).collect()
 }
 
-/// `" ".join(text.split())`.
-pub fn collapse_spaces(text: &str) -> String {
-    split_whitespace(text).join(" ")
-}
-
 /// `str.splitlines()`.
 pub fn splitlines(text: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut start = 0;
     let mut iter = text.char_indices().peekable();
     while let Some((index, c)) = iter.next() {
-        let boundary = matches!(
-            c,
-            '\n' | '\r' | '\x0b' | '\x0c' | '\x1c' | '\x1d' | '\x1e' | '\u{85}' | '\u{2028}' | '\u{2029}'
-        );
+        let boundary =
+            matches!(c, '\n' | '\r' | '\x0b' | '\x0c' | '\x1c' | '\x1d' | '\x1e' | '\u{85}' | '\u{2028}' | '\u{2029}');
         if !boundary {
             continue;
         }
@@ -379,42 +334,6 @@ pub fn parse_int_base(text: &str, base: u32) -> Option<i128> {
     Some(if negative { -value } else { value })
 }
 
-/// Code point length, Python's `len(text)`.
-pub fn len(text: &str) -> usize {
-    if text.is_ascii() {
-        text.len()
-    } else {
-        text.chars().count()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sigma() {
-        assert_eq!(lower("ΑΣ"), "ας");
-        assert_eq!(lower("Σ"), "σ");
-        assert_eq!(lower("ΑΣΑ"), "ασα");
-    }
-
-    #[test]
-    fn lines() {
-        assert_eq!(splitlines("a\r\nb\rc\n"), vec!["a", "b", "c"]);
-        assert_eq!(splitlines("a\n\nb"), vec!["a", "", "b"]);
-        assert!(splitlines("").is_empty());
-    }
-
-    #[test]
-    fn ints() {
-        assert_eq!(parse_int(" 1_000 "), Some(1000));
-        assert_eq!(parse_int("-٣"), Some(-3));
-        assert_eq!(parse_int("1__0"), None);
-        assert_eq!(parse_int("²"), None);
-    }
-}
-
 /// `float(text)` for a str: Python's spelling rules, None where it raises.
 ///
 /// Surrounding whitespace, a sign, `inf`/`infinity`/`nan` in any case,
@@ -429,10 +348,8 @@ pub fn parse_float(text: &str) -> Option<f64> {
     for c in trimmed.chars() {
         if c.is_ascii() {
             ascii.push(c);
-        } else if let Some(value) = decimal_value(c) {
-            ascii.push(char::from_digit(value, 10)?);
         } else {
-            return None;
+            ascii.push(char::from_digit(decimal_value(c)?, 10)?);
         }
     }
     let bytes = ascii.as_bytes();
@@ -461,4 +378,31 @@ pub fn parse_float(text: &str) -> Option<f64> {
         return None;
     }
     cleaned.parse::<f64>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sigma() {
+        assert_eq!(lower("ΑΣ"), "ας");
+        assert_eq!(lower("Σ"), "σ");
+        assert_eq!(lower("ΑΣΑ"), "ασα");
+    }
+
+    #[test]
+    fn lines() {
+        assert_eq!(splitlines("a\r\nb\rc\n"), vec!["a", "b", "c"]);
+        assert_eq!(splitlines("a\n\nb"), vec!["a", "", "b"]);
+        assert!(splitlines("").is_empty());
+    }
+
+    #[test]
+    fn ints() {
+        assert_eq!(parse_int(" 1_000 "), Some(1000));
+        assert_eq!(parse_int("-٣"), Some(-3));
+        assert_eq!(parse_int("1__0"), None);
+        assert_eq!(parse_int("²"), None);
+    }
 }

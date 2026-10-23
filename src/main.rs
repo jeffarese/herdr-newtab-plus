@@ -12,10 +12,10 @@ mod paint;
 mod par;
 mod paths;
 mod proc;
-mod render;
 mod pyjson;
 mod pyos;
 mod pystr;
+mod render;
 mod sequences;
 mod session;
 mod state;
@@ -26,6 +26,7 @@ mod tests;
 mod testutil;
 mod textutil;
 mod theme;
+#[rustfmt::skip]
 mod unicode_tables;
 
 fn main() {

@@ -41,37 +41,6 @@ fn splitdrive(path: &str) -> (&str, &str) {
     ("", path)
 }
 
-/// `pathlib.Path(path).name`: the last component, ignoring trailing
-/// separators and "." components.
-pub fn path_name(path: &str) -> String {
-    #[cfg(windows)]
-    let path = splitdrive(path).1;
-    let parts: Vec<&str> = path.split(is_sep).filter(|p| !p.is_empty() && *p != ".").collect();
-    parts.last().map(|p| p.to_string()).unwrap_or_default()
-}
-
-/// `os.path.expanduser("~")`.
-pub fn home() -> Option<String> {
-    #[cfg(not(windows))]
-    {
-        let home = match std::env::var_os("HOME") {
-            Some(value) => value.to_string_lossy().into_owned(),
-            None => passwd_home()?,
-        };
-        let trimmed = home.trim_end_matches('/');
-        Some(if trimmed.is_empty() { "/".to_string() } else { trimmed.to_string() })
-    }
-    #[cfg(windows)]
-    {
-        if let Some(profile) = std::env::var_os("USERPROFILE") {
-            return Some(profile.to_string_lossy().into_owned());
-        }
-        let path = std::env::var_os("HOMEPATH")?.to_string_lossy().into_owned();
-        let drive = std::env::var_os("HOMEDRIVE").map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
-        Some(drive + &path)
-    }
-}
-
 #[cfg(not(windows))]
 fn passwd_home() -> Option<String> {
     // getpwuid_r: this runs on worker threads, where getpwuid is unsafe.
@@ -131,8 +100,7 @@ fn named_home(user: &str) -> Option<String> {
         let mut buffer = vec![0 as libc::c_char; size];
         let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
         let mut found: *mut libc::passwd = std::ptr::null_mut();
-        let code =
-            unsafe { libc::getpwnam_r(name.as_ptr(), &mut entry, buffer.as_mut_ptr(), size, &mut found) };
+        let code = unsafe { libc::getpwnam_r(name.as_ptr(), &mut entry, buffer.as_mut_ptr(), size, &mut found) };
         if code == libc::ERANGE && size < 1 << 20 {
             size *= 2;
             continue;
@@ -180,11 +148,8 @@ pub fn expandvars(path: &str) -> String {
             }
             (&path[start..stop], stop)
         };
-        let value = if name.is_empty() || name.contains('=') || name.contains('\0') {
-            None
-        } else {
-            std::env::var_os(name)
-        };
+        let value =
+            if name.is_empty() || name.contains('=') || name.contains('\0') { None } else { std::env::var_os(name) };
         match value {
             Some(value) => {
                 out.push_str(&path[copied..index]);
@@ -316,11 +281,6 @@ fn join_realpath(
         seen.insert(newpath, Some(path.clone()));
     }
     (path, true)
-}
-
-/// `Path.home()`.
-pub fn path_home() -> String {
-    home().unwrap_or_else(|| "~".to_string())
 }
 
 /// `os.path.abspath(path)`: absolute, normalised, without touching the disk.

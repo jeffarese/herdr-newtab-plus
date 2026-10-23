@@ -219,7 +219,8 @@ impl KeyDecoder {
         }
         let Some(name) = csi_final(final_byte) else { return (length, None) };
         let (_, modifier) = split_params(&params);
-        let name = if name == "shift+tab" { name.to_string() } else { format!("{}{}", modifier_prefix(modifier), name) };
+        let name =
+            if name == "shift+tab" { name.to_string() } else { format!("{}{}", modifier_prefix(modifier), name) };
         (length, Some(Event::Key(name)))
     }
 
@@ -443,10 +444,7 @@ mod tests {
 
     #[test]
     fn bracketed_paste() {
-        assert_eq!(
-            KeyDecoder::new().feed(b"\x1b[200~one two\x1b[201~"),
-            vec![Event::Paste("one two".into())]
-        );
+        assert_eq!(KeyDecoder::new().feed(b"\x1b[200~one two\x1b[201~"), vec![Event::Paste("one two".into())]);
     }
 
     #[test]

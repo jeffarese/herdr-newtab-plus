@@ -28,8 +28,36 @@ pub struct Match {
 fn is_delimiter(c: char) -> bool {
     matches!(
         c,
-        ' ' | '\t' | '/' | '\\' | '-' | '_' | '.' | ':' | ',' | ';' | '|' | '(' | ')' | '[' | ']' | '{' | '}' | '<'
-            | '>' | '@' | '#' | '\'' | '"' | '~' | '+' | '*' | '=' | '&' | '%' | '!' | '?'
+        ' ' | '\t'
+            | '/'
+            | '\\'
+            | '-'
+            | '_'
+            | '.'
+            | ':'
+            | ','
+            | ';'
+            | '|'
+            | '('
+            | ')'
+            | '['
+            | ']'
+            | '{'
+            | '}'
+            | '<'
+            | '>'
+            | '@'
+            | '#'
+            | '\''
+            | '"'
+            | '~'
+            | '+'
+            | '*'
+            | '='
+            | '&'
+            | '%'
+            | '!'
+            | '?'
     )
 }
 
@@ -292,19 +320,29 @@ mod tests {
     // Ported from the Python release's tests/test_fuzzy.py.
 
     #[test]
-    fn splits_on_whitespace() { assert_eq!(split_query("tri  week"), vec!["tri", "week"]); }
+    fn splits_on_whitespace() {
+        assert_eq!(split_query("tri  week"), vec!["tri", "week"]);
+    }
 
     #[test]
-    fn keeps_quoted_phrases_together() { assert_eq!(split_query("\"week gen\" tri"), vec!["week gen", "tri"]); }
+    fn keeps_quoted_phrases_together() {
+        assert_eq!(split_query("\"week gen\" tri"), vec!["week gen", "tri"]);
+    }
 
     #[test]
-    fn empty_query_has_no_terms() { assert!(split_query("   ").is_empty()); }
+    fn empty_query_has_no_terms() {
+        assert!(split_query("   ").is_empty());
+    }
 
     #[test]
-    fn returns_none_when_characters_are_missing() { assert!(match_text("xyz", "week generation").is_none()); }
+    fn returns_none_when_characters_are_missing() {
+        assert!(match_text("xyz", "week generation").is_none());
+    }
 
     #[test]
-    fn returns_none_when_order_does_not_hold() { assert!(match_text("kew", "week").is_none()); }
+    fn returns_none_when_order_does_not_hold() {
+        assert!(match_text("kew", "week").is_none());
+    }
 
     #[test]
     fn positions_point_at_the_matched_characters() {
@@ -330,7 +368,9 @@ mod tests {
     }
 
     #[test]
-    fn smart_case_is_insensitive_for_lowercase_queries() { assert!(match_text("rc", "RC").is_some()); }
+    fn smart_case_is_insensitive_for_lowercase_queries() {
+        assert!(match_text("rc", "RC").is_some());
+    }
 
     #[test]
     fn smart_case_is_sensitive_once_the_query_has_uppercase() {
@@ -344,6 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn single_character_query() { assert_eq!(match_text("k", "week").unwrap().positions, vec![3]); }
+    fn single_character_query() {
+        assert_eq!(match_text("k", "week").unwrap().positions, vec![3]);
+    }
 }
-

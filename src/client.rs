@@ -111,7 +111,8 @@ impl HerdrClient {
     // -- transports ---------------------------------------------------------
 
     fn socket_call(&self, method: &str, params: &Value) -> std::result::Result<Value, Transport> {
-        let request = dict(vec![("id", Value::str("newtab")), ("method", Value::str(method)), ("params", params.clone())]);
+        let request =
+            dict(vec![("id", Value::str("newtab")), ("method", Value::str(method)), ("params", params.clone())]);
         let mut payload = pyjson::dumps(&request, false).into_bytes();
         payload.push(b'\n');
         let path = self.socket_path.as_deref().unwrap_or("");
@@ -224,7 +225,14 @@ impl HerdrClient {
     ///
     /// `extra` is handed to the agent's own executable rather than to Herdr
     /// -- `args` over the socket, everything after `--` on the command line.
-    pub fn start_agent(&mut self, name: &str, kind: &str, pane_id: &str, timeout_ms: i64, extra: &[String]) -> Result<()> {
+    pub fn start_agent(
+        &mut self,
+        name: &str,
+        kind: &str,
+        pane_id: &str,
+        timeout_ms: i64,
+        extra: &[String],
+    ) -> Result<()> {
         let mut params = vec![
             ("name", Value::str(name)),
             ("kind", Value::str(kind)),

@@ -74,12 +74,10 @@ pub fn agent_kind(agent: Option<&str>) -> String {
 
 pub fn logo_for(agent: Option<&str>) -> Option<char> {
     let kind = agent_kind(agent);
-    VENDORS
-        .iter()
-        .position(|vendor| *vendor == kind)
-        .and_then(|index| char::from_u32(FIRST + index as u32))
+    VENDORS.iter().position(|vendor| *vendor == kind).and_then(|index| char::from_u32(FIRST + index as u32))
 }
 
+#[cfg(test)]
 pub fn is_logo(c: char) -> bool {
     let code = c as u32;
     (FIRST..FIRST + VENDORS.len() as u32).contains(&code)
@@ -110,8 +108,18 @@ fn has_font_file(directory: &str) -> bool {
 
 /// Whether this machine has the font, by file first and fontconfig second.
 pub fn detect() -> bool {
+    #[cfg(test)]
+    if let Some(directories) = TEST_FONT_DIRS.lock().unwrap_or_else(|poison| poison.into_inner()).clone() {
+        // Tests look in these folders only, and never ask fontconfig, so this
+        // machine's own fonts stay out of the answer.
+        return directories.iter().any(|directory| has_font_file(directory));
+    }
     detect_in(&font_dirs())
 }
+
+/// Where `detect` looks while a test has set it. Hold `env_lock()` around it.
+#[cfg(test)]
+pub(crate) static TEST_FONT_DIRS: Mutex<Option<Vec<String>>> = Mutex::new(None);
 
 fn detect_in(directories: &[String]) -> bool {
     if directories.iter().any(|directory| has_font_file(directory)) {

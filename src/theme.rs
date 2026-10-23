@@ -139,8 +139,7 @@ pub struct Theme {
 
 impl Theme {
     pub fn new(overrides: Option<&Map>, selection_background: Option<&Value>, appearance: Option<&str>) -> Theme {
-        let mut merged: Vec<(String, String)> =
-            DEFAULTS.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let mut merged: Vec<(String, String)> = DEFAULTS.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
         fn set(merged: &mut Vec<(String, String)>, key: &str, value: String) {
             if let Some(slot) = merged.iter_mut().find(|(k, _)| k == key) {
                 slot.1 = value;
@@ -170,11 +169,7 @@ impl Theme {
             .map(|(role, spec)| (role, parse_spec(&spec).map(|p| format!("\x1b[38;{}m", p)).unwrap_or_default()))
             .collect();
         let selection = selection_background.and_then(parse_value);
-        Theme {
-            fg,
-            selection_bg: selection.map(|p| format!("\x1b[48;{}m", p)).unwrap_or_default(),
-            agent_icons: false,
-        }
+        Theme { fg, selection_bg: selection.map(|p| format!("\x1b[48;{}m", p)).unwrap_or_default(), agent_icons: false }
     }
 
     pub fn fg(&self, role: &str) -> &str {

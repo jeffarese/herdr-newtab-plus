@@ -68,10 +68,8 @@ pub const NONE_LABEL: &str = "shell";
 /// this is a table of what was checked rather than a pattern. An agent
 /// missing from it is not assumed to have an undiscovered spelling: the toggle
 /// refuses on that chip and says so.
-pub const SKIP_PERMISSION_FLAGS: &[(&str, &[&str])] = &[
-    ("claude", &["--dangerously-skip-permissions"]),
-    ("codex", &["--dangerously-bypass-approvals-and-sandbox"]),
-];
+pub const SKIP_PERMISSION_FLAGS: &[(&str, &[&str])] =
+    &[("claude", &["--dangerously-skip-permissions"]), ("codex", &["--dangerously-bypass-approvals-and-sandbox"])];
 
 /// What the chip row appends to say the flag is on.
 pub const SKIP_MARK: &str = "!";
