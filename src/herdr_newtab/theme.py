@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+from .icons import agent_kind, logo_for
+
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
 UNDERLINE = "\x1b[4m"
@@ -58,6 +60,33 @@ DEFAULTS = {
     # An agent about to start with its permission prompts off. Deliberately not
     # the agent color: the point is that the chip stops looking ordinary.
     "warn": "bright_yellow",
+    # The rules between the input, the list and the chrome. They only divide,
+    # so they sit below every tier of text rather than in the dimmest of them.
+    "rule": "240",
+    # Agent status, in herdr's own sidebar colours, for folders an agent is
+    # already standing in.
+    "blocked": "bright_red",
+    "working": "#c78a1f",
+    "done": "bright_cyan",
+    "idle": "bright_green",
+    # Each agent in its vendor's colour, the same table herdr-bar uses, so an
+    # agent looks the same in both popups. Pi and Grok have monochrome marks and
+    # take the text colour. An agent missing here falls back to `agent`.
+    "agent_claude": "#D97757",
+    "agent_codex": "#10A37F",
+    "agent_kimi": "#9B8AFB",
+    "agent_gemini": "#4285F4",
+    "agent_cursor": "#A78BFA",
+    "agent_opencode": "#38BDF8",
+    "agent_pi": "default",
+    "agent_grok": "default",
+}
+
+STATUS_GLYPHS = {
+    "blocked": "◉",
+    "working": "◐",
+    "done": "●",
+    "idle": "✓",
 }
 
 
@@ -95,6 +124,7 @@ class Theme(object):
             ("muted", default_muted(appearance)),
             ("dim", default_dim(appearance)),
             ("ghost", default_ghost(appearance)),
+            ("rule", default_rule(appearance)),
         ):
             if spec:
                 merged[role] = spec
@@ -105,9 +135,23 @@ class Theme(object):
             self._fg[role] = "" if params is None else "\x1b[38;%sm" % params
         selection = _parse(selection_background)
         self.selection_bg = "" if selection is None else "\x1b[48;%sm" % selection
+        # Vendor logos are a font question, not a colour one: the caller decides
+        # whether the font is there and says so here, once.
+        self.agent_icons = False
 
     def fg(self, role: str) -> str:
         return self._fg.get(role, "")
+
+    def agent_role(self, kind: Optional[str]) -> str:
+        """The role an agent is drawn in: its vendor's colour, or `agent`."""
+        role = "agent_" + agent_kind(kind)
+        return role if role in self._fg else "agent"
+
+    def logo(self, kind: Optional[str]) -> str:
+        """The agent's logo when logos are on and the font has one, else empty."""
+        if not self.agent_icons:
+            return ""
+        return logo_for(kind) or ""
 
     def paint(self, role: str, text: str, bold: bool = False) -> str:
         color = self.fg(role)
@@ -153,6 +197,15 @@ def default_ghost(appearance: Optional[str]) -> Optional[str]:
         return "244"
     if appearance == "light":
         return "245"
+    return None
+
+
+def default_rule(appearance: Optional[str]) -> Optional[str]:
+    """The rules: visible as a line, quiet enough to never be read as text."""
+    if appearance == "dark":
+        return "239"
+    if appearance == "light":
+        return "250"
     return None
 
 

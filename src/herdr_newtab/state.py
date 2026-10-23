@@ -81,6 +81,15 @@ class Recents(object):
                 return str(agent) if agent else None
         return None
 
+    def agents(self) -> Dict[str, str]:
+        """Every remembered folder that was last opened with an agent, and which."""
+        found: Dict[str, str] = {}
+        for entry in self.entries:
+            agent = entry.get("agent")
+            if agent:
+                found.setdefault(str(entry["path"]), str(agent))
+        return found
+
     def last_agent(self) -> Optional[str]:
         """The most recently started agent anywhere -- the default for a new folder."""
         for entry in self.entries:

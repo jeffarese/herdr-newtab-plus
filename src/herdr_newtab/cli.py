@@ -16,7 +16,7 @@ import sys
 import time
 from typing import List, Optional
 
-from . import __version__, agents, paths
+from . import __version__, agents, icons, paths
 from .app import Choice, Picker
 from .client import HerdrClient, HerdrError, resolve_bin
 from .config import Config
@@ -113,6 +113,10 @@ def _doctor(client: HerdrClient, config: Config) -> int:
         % ("yes" if config.wants_zoxide(paths.zoxide_installed()) else "no"),
         "agents           %s" % ", ".join(chip.label for chip in chips),
         "skip permissions %s" % (_skip_summary(chips, config) or "(none of the above)"),
+        "agent icons      %s" % _icons_summary(config),
+        "preview          %s" % {True: "on", False: "off until ctrl+o"}.get(
+            config.preview, "auto (when the popup is wide enough)"
+        ),
         "stdin is a tty   %s" % ("yes" if sys.stdin.isatty() else "no"),
     ]
     try:
@@ -129,6 +133,17 @@ def _doctor(client: HerdrClient, config: Config) -> int:
     )
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
+
+
+def _icons_summary(config: Config) -> str:
+    found = icons.font_available()
+    if config.agent_icons == "none":
+        return "off (agent_icons is \"none\")"
+    if config.agent_icons == "font":
+        return "on, forced (%s %s here)" % (icons.FAMILY, "found" if found else "not found")
+    if found:
+        return "on (%s found)" % icons.FAMILY
+    return "off (%s not installed; see the README)" % icons.FAMILY
 
 
 def _list(client: HerdrClient, config: Config) -> int:
@@ -299,6 +314,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _fail("needs a terminal; run it from Herdr with `plugin pane open`")
 
     recents = Recents(state_path())
+    if config.agent_icons == "auto":
+        icons.prefetch()  # overlaps the snapshot request rather than following it
     try:
         snapshot, catalog = _catalog(client, config, recents)
     except HerdrError as error:
@@ -313,6 +330,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if selection_background == "auto":
         selection_background = default_selection_background(appearance)
     theme = Theme(config.colors, selection_background, appearance)
+    theme.agent_icons = icons.enabled(config.agent_icons)
 
     picker = Picker(
         snapshot=snapshot,

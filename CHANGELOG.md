@@ -2,6 +2,64 @@
 
 ## Unreleased
 
+- The right-hand third of the popup previews the folder under the cursor, the
+  way herdr-bar previews a pane: its name and path, its branch when it is a
+  checkout, the space it already has, every agent standing in it with what each
+  is doing, and what is inside it, folders first, with a count of what did not
+  fit. It shows by itself when the popup is wide enough -- the shipped one is --
+  and `ctrl+o` hides it or asks for it; `"preview"` in the config is `"auto"`,
+  `true` or `false`, as in herdr-bar. The divider is the list's scrollbar too,
+  so there is one vertical line rather than two, and it meets the rules above
+  and below the list.
+- The preview's read of a folder is also the answer to whether the folder
+  exists, so landing on a folder asks the filesystem the same two questions it
+  did before, plus one small read for a checkout's branch, and coming back to a
+  folder asks nothing. Creating still asks afresh. The benchmark now counts file
+  reads as lookups, and builds a fixture tree for the preview to read, so the
+  bytes a navigation costs are the same on every machine.
+- A click under a short list, or on the preview, no longer selects a row that
+  is not on screen.
+- The help panel lists `^O`, and its create-mode lines no longer run past the
+  edge of a very narrow popup.
+
+- Agents look the way they do in herdr-bar. Each one is drawn in its vendor's
+  colour, from the same table, and with herdr-radar's Herdr Agent Icons Max font
+  installed the chips lead with the vendor's logo. `agent_icons` in the config
+  is `"auto"` (logos when the font is installed here), `"font"` (always, for a
+  picker reached over ssh) or `"none"`; `--doctor` says what it found. Every
+  colour can be overridden through `colors`, with herdr-bar's role names
+  (`agent_claude`, `agent_codex`, ...).
+- Each folder row shows the agent that folder was last opened with -- its logo
+  in a gutter at the front of the row, or its name in its colour beside the
+  badge without the font -- so moving through the list says what Enter is about
+  to start before the chip row moves to it. Only when `default_agent` is
+  `"last"`, since otherwise the memory is not what Enter uses.
+- A folder an agent is already standing in says so before its badge, in Herdr's
+  sidebar glyphs and colours: `◉` needs you, `◐` working, `●` done, `✓` idle.
+  With several agents in one folder, the one that wants you first wins.
+- The agent row is a row of chips: the selected one is a pill in the selection
+  colour, bold in its agent's colour, and the rest are quiet, with no dots
+  between them. Without a selection colour the selected label is underlined, as
+  before. A click now lands on the chip it hits even when the row has scrolled
+  to keep the selection in view; it used to measure the unscrolled row.
+- The line above the hints ends with the create mode as a three-way switch --
+  `smart   tab   space`, with a pill on the current position -- so the two
+  positions you are not on are on screen too. The line under it now starts
+  with the mode's name and lines up with the sentence it explains. The `[tab]`
+  and `[space]` badges are left for popups too narrow for the switch.
+- The rules between the sections are a step below every tier of text, rather
+  than in the dimmest of them: they divide, and are never read. The empty list
+  says what happened in bold and what to do about it underneath. `esc` in the
+  hints says `close`.
+- The help panel draws its keys as keys, in the accent, and its topics as
+  headings, and every entry's text starts in the same column -- `^T`'s used to
+  start six columns left of the rest. It says what the new row decorations
+  mean, and still fits the popup without shedding a row.
+- The demo session has two spaces with an agent in each, one working and one
+  waiting on you, and remembers an agent for three folders, so the GIF shows
+  the logos, the statuses and the chip row following the selection. The
+  recorder draws the logos with the icon font when the machine has it.
+
 - `scripts/record_demo.py` films the README's GIF. It drives the real picker
   through the same key handlers a terminal would, against the fixture catalog
   and a virtual filesystem, so the completion completes the same directories on

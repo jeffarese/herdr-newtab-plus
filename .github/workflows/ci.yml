@@ -58,7 +58,7 @@ jobs:
           # keep true is the other end: the picker's list stays capped however
           # tall the popup is, and the panel says all of it without shedding a
           # row. Nothing else would notice either quietly stopping.
-          from herdr_newtab.render import MAX_LIST, compute_layout, render_help
+          from herdr_newtab.render import MAX_LIST, PREVIEW_AUTO, compute_layout, render_help
           from herdr_newtab.theme import Theme
           inner = (pane["width"] - 3, pane["height"] - 2)
           layout = compute_layout(*inner)
@@ -69,6 +69,9 @@ jobs:
           )
           panel = render_help(Theme(), inner[0] - 2, inner[1])
           assert panel[-1].strip(), "the help panel does not fit the popup it sized"
+          # The folder preview shows by itself at the shipped size.
+          assert inner[0] - 2 >= PREVIEW_AUTO, "too narrow for the preview to show by default"
+          assert compute_layout(*inner, preview=True).preview_width, "no room for the preview"
           assert manifest["actions"][0]["id"] == "open"
           print("manifest ok:", manifest["id"], manifest["version"])
           PY

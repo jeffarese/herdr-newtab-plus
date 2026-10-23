@@ -7,10 +7,11 @@ how long the first frame takes to appear, how long a keystroke takes to show,
 and how many bytes each frame costs to get onto a terminal that may be on the
 far side of ssh and a multiplexer.
 
-Everything here runs against a synthetic catalog and a synthetic session, so
-the same command produces the same workload on any machine and no Herdr is
-needed. The measurements split into two kinds, and they are reported and used
-differently:
+Everything here runs against a synthetic catalog, a synthetic session, and a
+synthetic tree of folders made in a temp directory for the preview to read and
+folded to ``~`` the way a home is, so the same command produces the same
+workload on any machine and no Herdr is needed. The measurements split into
+two kinds, and they are reported and used differently:
 
 * **timings** -- machine-dependent, so they are scored but never gated. A
   loaded laptop is not a regression.
@@ -27,11 +28,14 @@ differently:
 from __future__ import annotations
 
 import argparse
+import builtins
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
@@ -52,8 +56,18 @@ from herdr_newtab.paths import (  # noqa: E402
 from herdr_newtab.state import Recents  # noqa: E402
 from herdr_newtab.theme import Theme  # noqa: E402
 
+# Rebound by ``stage`` to the fixture tree; the defaults are only what a frame
+# would show if a scenario ran without it.
 HOME = os.path.expanduser("~")
 BASE = os.path.join(HOME, "workspace")
+
+# How much of the catalog gets a folder on disk: the default catalog whole, so
+# every row the scenarios land on previews something real. Rows past it show
+# "not a folder yet", which costs the same lookups and is just as repeatable.
+STAGED = 400
+
+DIR_POOL = ("src", "tests", "docs", "scripts", "assets")
+FILE_POOL = ("README.md", "LICENSE", "pyproject.toml", "Makefile", "CHANGELOG.md", ".gitignore")
 
 # What a keystroke workload looks like: a name typed one character at a time,
 # which is the interaction the picker exists for. It narrows from the whole
@@ -110,6 +124,35 @@ def catalog(count: int) -> List[Suggestion]:
             )
         )
     return out
+
+
+def stage(items: Sequence[Suggestion]) -> str:
+    """Make the folders the catalog names, each with contents of its own.
+
+    The preview lists the folder under the cursor, so the bytes a navigation
+    costs depend on what is in the folders it lands on. Real folders on the
+    machine running this would make that a fact about the machine; these are
+    the same everywhere, and vary from folder to folder the way real ones do,
+    so moving between two of them has something to redraw.
+    """
+    global HOME, BASE
+    root = tempfile.mkdtemp(prefix="newtab-bench-")
+    old_base = BASE
+    HOME, BASE = root, os.path.join(root, "workspace")
+    paths._HOME = root  # folds the fixture to ~, as a real home would be
+    for index, item in enumerate(items[:STAGED]):
+        folder = BASE + item.path[len(old_base) :]
+        os.makedirs(folder)
+        for name in DIR_POOL[: index % len(DIR_POOL) + 1]:
+            os.mkdir(os.path.join(folder, name))
+        for name in FILE_POOL[: (index * 3) % len(FILE_POOL) + 1]:
+            open(os.path.join(folder, name), "w").close()
+        if item.is_git:
+            os.mkdir(os.path.join(folder, ".git"))
+            branch = "main" if index % 3 else "feature-%d" % index
+            with open(os.path.join(folder, ".git", "HEAD"), "w") as handle:
+                handle.write("ref: refs/heads/%s\n" % branch)
+    return root
 
 
 def snapshot(panes: int) -> Dict[str, Any]:
@@ -179,6 +222,7 @@ class Calls(object):
     -- and a measurement that changes with the machine is no longer a fact
     about the code. Nested calls are suppressed rather than added, since
     ``isdir`` is built on ``stat`` and asking once should be priced once.
+    Opening a file is a question too: it is how the preview reads a branch.
     """
 
     WATCHED_PATH = ("isdir", "isfile", "exists", "lexists", "islink", "realpath")
@@ -209,6 +253,7 @@ class Calls(object):
             self._wrap(os.path, name)
         for name in self.WATCHED_OS:
             self._wrap(os, name)
+        self._wrap(builtins, "open")
         self.total = 0
         self._depth = 0
         return self
@@ -521,19 +566,25 @@ class Metric(NamedTuple):
 #   floor -- about a kilobyte at this width. Both budgets are set to what the
 #   drawing genuinely requires, so what they catch is a diff that has stopped
 #   working rather than a layout somebody meant to change.
-# * Landing on a folder asks the filesystem two things: whether it exists, and
-#   what it is behind its symlinks -- the second being how the picker knows
-#   whether that folder already has a space. Two is therefore the budget, and
-#   standing still should cost less. The session it reasons from is a snapshot
-#   taken when the popup opened and cannot change while it is up, so anything
-#   spent re-deriving that is spent again on every keystroke.
+# * Landing on a folder asks the filesystem three things at most: what is in
+#   it, for the preview, which also says whether it exists at all; which branch
+#   it is on, when it is a checkout; and what it is behind its symlinks, which
+#   is how the picker knows whether that folder already has a space. Three is
+#   therefore the budget, and standing still should cost nothing. The session
+#   it reasons from is a snapshot taken when the popup opened and cannot change
+#   while it is up, so anything spent re-deriving that is spent again on every
+#   keystroke.
+# * The preview redraws on every navigation, so a navigation also pays for the
+#   lines of the folder it lands on that differ from the one it left. The
+#   benchmark's folders differ the way real ones do, and the budget stays where
+#   it was: the preview has to fit inside it.
 METRICS = (
     Metric("startup_ms", "cold start", "ms", 120.0, 700.0, 20, False),
     Metric("keystroke_ms", "keystroke p95", "ms", 3.0, 25.0, 25, False),
     Metric("nav_ms", "navigation p95", "ms", 1.5, 12.0, 15, False),
     Metric("keystroke_bytes", "bytes per keystroke", "B", 400.0, 8000.0, 15, True),
     Metric("nav_bytes", "bytes per navigation", "B", 1000.0, 8000.0, 15, True),
-    Metric("frame_calls", "lookups per frame", "", 2.0, 32.0, 10, True),
+    Metric("frame_calls", "lookups per frame", "", 3.0, 32.0, 10, True),
 )
 
 # ``--check`` gates the fixed metrics, generously: it is there to catch a frame
@@ -849,6 +900,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    fixture = stage(catalog(max(args.catalog, STAGED)))
+    try:
+        return run(args)
+    finally:
+        shutil.rmtree(fixture, ignore_errors=True)
+
+
+def run(args: argparse.Namespace) -> int:
     result = collect(args, 0 if args.check else args.startup_runs)
 
     if args.json:

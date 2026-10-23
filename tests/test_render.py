@@ -4,14 +4,16 @@ import unittest
 
 from herdr_newtab import render
 from herdr_newtab.agents import Agent
+from herdr_newtab.paint import cells_of
 from herdr_newtab.paths import SOURCE_RECENT, SOURCE_ROOT, SOURCE_SPACE, Scored, Suggestion
 from herdr_newtab.session import SPACE, TAB, Target
 from herdr_newtab.textutil import display_width, strip_ansi
-from herdr_newtab.theme import Theme
+from herdr_newtab.theme import UNDERLINE, Theme
 
 from .fixtures import CHIPS, picker
 
 THEME = Theme()
+PILLS = Theme(selection_background="237")
 
 
 def row(name, source=SOURCE_ROOT, detail="", is_git=False, path=None):
@@ -25,6 +27,12 @@ def row(name, source=SOURCE_ROOT, detail="", is_git=False, path=None):
 
 def plain(text):
     return strip_ansi(text)
+
+
+def painted(text, width):
+    """The characters a row draws on a background: what its pills cover."""
+    cells, _ = cells_of(text, width)
+    return "".join(char for char, style in cells if style[1])
 
 
 class LayoutTest(unittest.TestCase):
@@ -97,6 +105,76 @@ class RowTest(unittest.TestCase):
         self.assertLess(narrow, wide)
 
 
+def iconic():
+    theme = Theme(selection_background="237")
+    theme.agent_icons = True
+    return theme
+
+
+class RowDecorationTest(unittest.TestCase):
+    def test_the_folders_agent_leads_the_row_as_a_logo(self):
+        text = plain(render.render_row(iconic(), row("alpha"), 80, False, 12, "claude"))
+        self.assertTrue(text.startswith("  \ue1a0  alpha"), repr(text))
+        self.assertNotIn("claude", text)  # the logo already says it
+
+    def test_rows_without_an_agent_keep_the_gutter(self):
+        theme = iconic()
+        bare = plain(render.render_row(theme, row("alpha"), 80, False, 12))
+        marked = plain(render.render_row(theme, row("alpha"), 80, False, 12, "codex"))
+        self.assertEqual(bare.index("alpha"), marked.index("alpha"))
+
+    def test_without_the_font_the_agent_is_named_at_the_end(self):
+        text = plain(render.render_row(THEME, row("alpha", SOURCE_RECENT), 80, False, 12, "codex"))
+        self.assertTrue(text.startswith("  alpha"))
+        self.assertTrue(text.rstrip().endswith("codex · recent"), repr(text))
+
+    def test_an_agent_standing_in_the_folder_shows_its_status(self):
+        space = row("a", SOURCE_SPACE, "Atlas")
+        text = plain(render.render_row(THEME, space, 60, False, None, None, "blocked"))
+        self.assertTrue(text.rstrip().endswith("◉ Atlas"), repr(text))
+        working = plain(render.render_row(THEME, row("a"), 60, False, None, None, "working"))
+        self.assertTrue(working.rstrip().endswith("◐"), repr(working))
+
+    def test_an_unreported_status_says_nothing(self):
+        text = plain(
+            render.render_row(THEME, row("a", SOURCE_SPACE, "Atlas"), 60, False, None, None, "none")
+        )
+        self.assertTrue(text.rstrip().endswith(" Atlas"))
+        self.assertNotIn("◉", text)
+
+    def test_a_decorated_row_still_fits_its_width(self):
+        for theme in (THEME, iconic()):
+            for width in range(20, 110, 7):
+                for selected in (False, True):
+                    text = plain(
+                        render.render_row(
+                            theme,
+                            row("a-long-folder-name", SOURCE_SPACE, "A Space"),
+                            width,
+                            selected,
+                            None,
+                            "claude",
+                            "working",
+                        )
+                    )
+                    self.assertLessEqual(display_width(text), width, (width, selected))
+                    if selected and theme.selection_bg:
+                        self.assertEqual(display_width(text), width)  # a band, edge to edge
+
+
+class EmptyListTest(unittest.TestCase):
+    def test_it_says_what_happened_and_what_to_do(self):
+        rows = [plain(line) for line in render.render_empty(THEME, 80, 5, "zzz")]
+        self.assertEqual(len(rows), 5)
+        self.assertIn("no folder matches", rows[0])
+        self.assertIn("⏎ still creates it", rows[1])
+
+    def test_a_one_row_list_keeps_the_headline(self):
+        rows = render.render_empty(THEME, 80, 1, "")
+        self.assertEqual(len(rows), 1)
+        self.assertIn("no folders to suggest", plain(rows[0]))
+
+
 class InputTest(unittest.TestCase):
     def test_an_empty_query_shows_the_placeholder(self):
         self.assertIn("folder", plain(render.render_input(THEME, 70, "", 0, "")))
@@ -122,7 +200,9 @@ class ChipsTest(unittest.TestCase):
     def test_a_crowded_row_still_shows_the_selection(self):
         many = [Agent("", "shell")] + [Agent("k%d" % i, "agent-%d" % i) for i in range(12)]
         text = plain(render.render_chips(THEME, 44, many, 10))
-        self.assertIn("agent-10", text)
+        self.assertIn("agent-9", text)  # chips[10], the shell leading the row
+        self.assertIn("‹", text)
+        self.assertIn("›", text)
         self.assertLessEqual(display_width(text), 44)
 
     def test_only_the_selected_chip_is_marked_as_skipping(self):
@@ -138,6 +218,40 @@ class ChipsTest(unittest.TestCase):
         text = plain(render.render_chips(THEME, 44, many, 10, True))
         self.assertIn("agent-9!", text)  # chips[10], the shell leading the row
         self.assertLessEqual(display_width(text), 44)
+
+
+class ChipSpanTest(unittest.TestCase):
+    def test_each_span_covers_its_own_chip(self):
+        for theme in (THEME, iconic()):
+            text, spans = render.chips_row(theme, 90, CHIPS, 1, True)
+            flat = plain(text)
+            for chip, (start, end) in zip(CHIPS, spans):
+                label = render.chip_label(chip, chip is CHIPS[1], True)
+                self.assertIn(label, flat[start:end], (chip, flat[start:end]))
+
+    def test_the_selected_chip_is_a_pill(self):
+        text, spans = render.chips_row(PILLS, 90, CHIPS, 2)
+        self.assertEqual(painted(text, 90), " codex ")
+        start, end = spans[2]
+        self.assertEqual(plain(text)[start:end], " codex ")
+
+    def test_without_a_selection_colour_the_label_is_underlined(self):
+        text = render.render_chips(THEME, 90, CHIPS, 2)
+        self.assertEqual(painted(text, 90), "")
+        self.assertIn(UNDERLINE, text)
+
+    def test_logos_lead_every_agent_and_a_shell_gets_a_dollar(self):
+        text = plain(render.render_chips(iconic(), 90, CHIPS, 0))
+        self.assertIn("$  shell", text)
+        self.assertIn("\ue1a0  claude", text)
+        self.assertIn("\ue1a1  codex", text)
+
+    def test_a_chip_scrolled_out_of_view_spans_nothing(self):
+        many = [Agent("", "shell")] + [Agent("k%d" % i, "agent-%d" % i) for i in range(12)]
+        text, spans = render.chips_row(THEME, 44, many, 10)
+        self.assertEqual(spans[0], (-1, -1))
+        start, end = spans[10]
+        self.assertIn("agent-9", plain(text)[start:end])
 
 
 class TargetLineTest(unittest.TestCase):
@@ -181,14 +295,38 @@ class TargetLineTest(unittest.TestCase):
         )
         self.assertIn("claude", text)
 
-    def test_a_forced_mode_is_badged(self):
+    def test_the_switch_sits_at_the_end_of_the_line(self):
         text = plain(
             render.render_target(
-                THEME, 80, Target(TAB, "/a", "w1", "Atlas"), None, "", False, "tab"
+                PILLS, 80, Target(TAB, "/a", "w1", "Atlas"), None, "", False, TAB
+            )
+        )
+        self.assertTrue(text.startswith("  → new tab in Atlas"))
+        self.assertTrue(text.rstrip().endswith("smart   tab   space"))
+        self.assertEqual(display_width(text), 80)
+        self.assertNotIn("[", text)  # nothing left for a badge to say
+
+    def test_the_switch_marks_only_the_current_mode_with_a_pill(self):
+        for mode in ("smart", TAB, SPACE):
+            raw, width = render.mode_switch(PILLS, mode)
+            self.assertEqual(plain(raw), " smart   tab   space ")
+            self.assertEqual(width, display_width(plain(raw)))
+            self.assertEqual(painted(raw, width), " %s " % mode)
+
+    def test_without_a_selection_colour_the_current_mode_is_underlined(self):
+        raw, _ = render.mode_switch(THEME, TAB)
+        self.assertEqual(raw.count(UNDERLINE), 1)
+        self.assertTrue(plain(raw[raw.index(UNDERLINE) :]).startswith("tab"))
+
+    def test_a_popup_too_narrow_for_the_switch_badges_an_override(self):
+        text = plain(
+            render.render_target(
+                THEME, 40, Target(TAB, "/a", "w1", "Atlas"), None, "", False, "tab"
             )
         )
         self.assertIn("new tab in", text)
         self.assertIn("[tab]", text)
+        self.assertLessEqual(display_width(text), 40)
 
     def test_the_automatic_decision_is_not_badged(self):
         text = plain(
@@ -213,7 +351,6 @@ class ModeNoteTest(unittest.TestCase):
     def test_each_mode_is_spelled_out_in_words(self):
         for mode in ("smart", TAB, SPACE):
             text = plain(render.render_mode_note(THEME, 105, mode))
-            self.assertIn("^T", text)
             self.assertIn(mode, text)
             self.assertIn(render.MODE_NOTES[mode][:20], text)
 

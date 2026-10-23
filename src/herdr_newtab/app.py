@@ -22,7 +22,16 @@ from .agents import Agent, can_skip_permissions, initial_index
 from .config import Config
 from .keys import KEY, MOUSE, PASTE, PRESS, TEXT, WHEEL_DOWN, WHEEL_UP, Event, KeyDecoder
 from .paint import Painter
-from .session import Target, next_mode, normalize, resolve_target
+from .session import (
+    Target,
+    folder_agents,
+    folder_statuses,
+    next_mode,
+    normalize,
+    resolve_target,
+    resolved,
+    space_folders,
+)
 from .state import Recents
 from .term import Terminal
 from .theme import Theme
@@ -83,6 +92,27 @@ class Picker(object):
         # The panel takes the whole popup while it is up: at 12 rows there is no
         # room to explain anything beside the thing being explained.
         self.help = False
+
+        # What the rows say about each folder beyond its name: the agent it was
+        # last opened with, and the status of any agent standing in it now.
+        # Both are fixed for the life of the popup -- the snapshot is taken once
+        # and the recents only change on the way out -- so they are looked up
+        # once rather than per row per frame.
+        self._row_agents: Dict[str, str] = (
+            recents.agents() if config.default_agent == "last" else {}
+        )
+        self._statuses: Dict[str, str] = folder_statuses(snapshot)
+        self._agents_in = folder_agents(snapshot)
+        self._spaces = space_folders(snapshot)
+
+        # The preview follows herdr-bar's rules: on unless the config says
+        # false, shown by itself only on a popup wide enough to spare the
+        # column, and once ^O has been pressed, shown or hidden as asked
+        # wherever it fits at all.
+        self.preview_enabled = config.preview is not False
+        self.preview_chosen = False
+        self._preview_showing = False
+        self._list_right = 0
 
         self.status: Optional[str] = None
         self.status_until = 0.0
@@ -367,11 +397,48 @@ class Picker(object):
             self.toggle_skip_permissions()
         elif name == "ctrl+t":
             self.cycle_create_mode()
+        elif name == "ctrl+o":
+            self.toggle_preview()
         elif name == "ctrl+r":
             paths.clear_cache()
             self.refilter(keep=self.folder())
             self.flash("rescanned")
         return None
+
+    def toggle_preview(self) -> None:
+        """Show the preview if it is hidden, hide it if it is showing.
+
+        Measured against what is on screen rather than against the setting, so
+        a preview "auto" kept hidden on a narrow popup comes up on the first
+        press instead of the second.
+        """
+        self.preview_enabled = not self._preview_showing
+        self.preview_chosen = True
+        self._dirty = True
+
+    def preview_fits(self, inner: int) -> bool:
+        if not self.preview_enabled:
+            return False
+        if self.preview_chosen or self.config.preview is True:
+            return inner >= render.PREVIEW_FITS
+        return inner >= render.PREVIEW_AUTO
+
+    def preview(self) -> Optional[render.Preview]:
+        """What the preview says about the folder Enter would use."""
+        folder = self.folder()
+        if not folder:
+            return None
+        listed = paths.contents(folder)
+        space = self._spaces.get(folder) or self._spaces.get(resolved(folder))
+        return render.Preview(
+            name=paths.folder_name(folder),
+            path=paths.display(folder),
+            contents=listed,
+            branch=paths.git_branch(folder, listed) if listed is not None else None,
+            space=space.label if space else None,
+            agents=self._agents_in.get(folder) or self._agents_in.get(resolved(folder)) or (),
+            hidden=self.config.hidden,
+        )
 
     def _page(self) -> int:
         return max(1, self._list_height - 1)
@@ -400,8 +467,13 @@ class Picker(object):
                     return None
             return None
 
-        index = self.offset + (row - self._row_top)
-        if self._row_top <= row and 0 <= index < len(self.rows):
+        # The list's own rows only: not the air under a short list, and not the
+        # preview beside it, which shows a folder rather than offering one.
+        line = row - self._row_top
+        if not 0 <= line < self._list_height or event.x - 1 >= self._list_right:
+            return None
+        index = self.offset + line
+        if 0 <= index < len(self.rows):
             already = index == self.selected
             self.selected = index
             self._sync_agent()
@@ -425,14 +497,17 @@ class Picker(object):
         self.offset = max(0, min(self.offset, max(0, len(self.rows) - height)))
 
     def _list_rows(self, layout: render.Layout) -> List[str]:
-        width = layout.inner_width
+        width = layout.list_width or layout.inner_width
         height = layout.list_height
         self._scroll_into_view(height)
         if not self.rows:
-            return [render.render_empty(self.theme, width, self.query)] + [""] * (height - 1)
+            return render.render_empty(self.theme, width, height, self.query)
 
         bar = render.scrollbar_column(len(self.rows), height, self.offset, height)
-        body_width = width - (2 if bar else 0)
+        # Beside the preview the separator is the scrollbar's track, so the list
+        # keeps its full width and there is one vertical line rather than two.
+        beside = bool(layout.preview_width)
+        body_width = width - (2 if bar and not beside else 0)
         visible = self.rows[self.offset : self.offset + height]
         name_room = render.name_column(visible, body_width)
         out: List[str] = []
@@ -441,16 +516,55 @@ class Picker(object):
             if index >= len(self.rows):
                 out.append("")
                 continue
+            path = self.rows[index].suggestion.path
             text = render.render_row(
                 self.theme,
                 self.rows[index],
                 body_width,
                 index == self.selected,
                 name_room,
+                self._row_agents.get(path),
+                self._statuses.get(path),
             )
-            if bar:
-                text = render.pad_row(text, body_width) + " " + self.theme.paint("dim", bar[line])
+            if bar and not beside:
+                thumb = bar[line] == render.SCROLL_THUMB
+                text = (
+                    render.pad_row(text, body_width)
+                    + " "
+                    + self.theme.paint("muted" if thumb else "rule", bar[line])
+                )
             out.append(text)
+        return out
+
+    def _body_rows(self, layout: render.Layout) -> List[str]:
+        """The list, and the preview beside it when there is one, row by row."""
+        rows = self._list_rows(layout)
+        if not layout.preview_width:
+            return rows + [""] * layout.spare
+        height = layout.list_height + layout.spare
+        preview = render.render_preview(
+            self.theme, layout.preview_width, height, self.preview()
+        )
+        bar = (
+            render.scrollbar_column(
+                len(self.rows), layout.list_height, self.offset, layout.list_height
+            )
+            if self.rows
+            else {}
+        )
+        out = []
+        for index in range(height):
+            left = rows[index] if index < len(rows) else ""
+            thumb = bar.get(index) == render.SCROLL_THUMB
+            separator = (
+                " "
+                + self.theme.paint(
+                    "muted" if thumb else "rule",
+                    render.SCROLL_THUMB if thumb else render.SEPARATOR.strip(),
+                )
+                + " "
+            )
+            out.append(render.pad_row(left, layout.list_width) + separator + preview[index])
         return out
 
     def _hints(self) -> List[Tuple[str, str]]:
@@ -473,7 +587,7 @@ class Picker(object):
             if self.ghost()
             else [("⇥", "agent"), ("→", "complete")]
         )
-        return completion + [("↑↓", "folder")] + mode + skip + [("⏎", "create"), ("esc", "")]
+        return completion + [("↑↓", "folder")] + mode + skip + [("⏎", "create"), ("esc", "close")]
 
     def _guide(self) -> str:
         """The corner that opens the panel -- while `?` is what it would do.
@@ -498,32 +612,42 @@ class Picker(object):
                 for row in render.render_help(self.theme, width - 2, height, self.create_mode)
             ]
 
-        layout = render.compute_layout(width, height)
+        layout = render.compute_layout(width, height, self.preview_fits(width - 2))
+        self._preview_showing = bool(layout.preview_width)
         self._list_height = layout.list_height
+        self._list_right = len(pad) + (layout.list_width or layout.inner_width)
+        # Where the separator meets the rules above and below the list, so the
+        # two panes read as one box divided rather than two drawn side by side.
+        junction = layout.list_width + 1 if layout.preview_width else -1
 
         lines: List[str] = [pad + render.render_input(
             self.theme, layout.inner_width, self.query, self.cursor, self.ghost()
         )]
         if layout.rules:
-            lines.append(pad + render.render_rule(self.theme, layout.inner_width))
+            lines.append(pad + render.render_rule(self.theme, layout.inner_width, junction, "┬"))
 
         self._row_top = len(lines)
-        lines.extend(pad + row for row in self._list_rows(layout))
-        # Rows the list was not allowed to take. They sit here rather than under
-        # the chrome so the input stays at the top of the popup and the hints
+        # Rows the list was not allowed to take sit under it rather than under
+        # the chrome, so the input stays at the top of the popup and the hints
         # stay on its floor, which is where the eye already looks for them.
-        lines.extend([""] * layout.spare)
+        lines.extend(pad + row for row in self._body_rows(layout))
 
         if layout.rules:
-            lines.append(pad + render.render_rule(self.theme, layout.inner_width))
+            lines.append(pad + render.render_rule(self.theme, layout.inner_width, junction, "┴"))
 
         self._chip_row = -1
         if layout.chips:
             self._chip_row = len(lines)
-            self._chip_spans = self._measure_chips()
-            lines.append(pad + render.render_chips(
+            row, spans = render.chips_row(
                 self.theme, layout.inner_width, self.chips, self.chip, self.skipping()
-            ))
+            )
+            # Shifted by the pad column, so a span is in the same columns the
+            # mouse reports (less one, as handle_mouse counts them).
+            self._chip_spans = [
+                (start + len(pad), end + len(pad)) if start >= 0 else (start, end)
+                for start, end in spans
+            ]
+            lines.append(pad + row)
         if layout.target:
             lines.append(pad + render.render_target(
                 self.theme,
@@ -550,19 +674,6 @@ class Picker(object):
         terminal.write(self._painter.frame(self.frame(width, height), width, height))
         terminal.flush()
         self._dirty = False
-
-    def _measure_chips(self) -> List[Tuple[int, int]]:
-        """Column spans of each chip, so a click can land on one."""
-        spans: List[Tuple[int, int]] = []
-        column = 1 + len("  agent  ")  # the leading pad column, then the label
-        skipping = self.skipping()
-        for index, chip in enumerate(self.chips):
-            if index:
-                column += 3  # " · "
-            label = render.chip_label(chip, index == self.chip, skipping)
-            spans.append((column, column + len(label)))
-            column += len(label)
-        return spans
 
     # -- loop ---------------------------------------------------------------
 
@@ -605,7 +716,9 @@ class Picker(object):
         if not folder:
             self.flash("type a folder first")
             return None
-        if not paths.is_directory(folder):
+        # Asked afresh: the frame's answer may be a listing read a while ago,
+        # and this one is about to have a tab made in it.
+        if not paths.is_directory(folder, fresh=True):
             self.flash("%s is not a folder" % paths.display(folder))
             return None
         target = resolve_target(folder, self.snapshot, self.create_mode)

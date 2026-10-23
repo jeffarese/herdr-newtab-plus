@@ -44,6 +44,13 @@ class RecentsTest(unittest.TestCase):
         recents.touch("/a", "")
         self.assertIsNone(recents.agent_for("/a"))
 
+    def test_agents_maps_each_folder_to_its_latest_agent(self):
+        recents = Recents(None)
+        recents.touch("/a", "codex")
+        recents.touch("/b", "")
+        recents.touch("/a", "claude")
+        self.assertEqual(recents.agents(), {"/a": "claude"})
+
     def test_last_agent_skips_folders_opened_as_a_shell(self):
         recents = Recents(None)
         recents.touch("/a", "claude")

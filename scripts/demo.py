@@ -46,7 +46,7 @@ def catalog():
 
     return [
         folder("atlas", SOURCE_SPACE, "Atlas"),
-        folder("herdr-bar", SOURCE_RECENT, is_git=True),
+        folder("herdr-bar", SOURCE_SPACE, "Herdr", is_git=True),
         folder("herdr-newtab-plus", SOURCE_RECENT, is_git=True),
         folder("mobile-client", SOURCE_ZOXIDE, is_git=True),
         folder("notes", SOURCE_ROOT, is_git=True),
@@ -57,12 +57,14 @@ def catalog():
 
 
 def snapshot():
+    """Two spaces, each with an agent in it: one working, one waiting on you."""
     return {
         "version": "0.7.5",
         "focused_workspace_id": "w1",
         "focused_pane_id": "w1:p5P",
         "workspaces": [
             {"workspace_id": "w1", "label": "Atlas", "number": 1, "focused": True},
+            {"workspace_id": "w2", "label": "Herdr", "number": 2, "focused": False},
         ],
         "panes": [
             {
@@ -70,9 +72,31 @@ def snapshot():
                 "workspace_id": "w1",
                 "cwd": os.path.join(HOME, "workspace", "atlas"),
             },
+            {
+                "pane_id": "w2:p1A",
+                "workspace_id": "w2",
+                "cwd": os.path.join(HOME, "workspace", "herdr-bar"),
+            },
         ],
-        "agents": [],
+        "agents": [
+            {"pane_id": "w1:p5P", "agent": "claude", "agent_status": "working"},
+            {"pane_id": "w2:p1A", "agent": "codex", "agent_status": "blocked"},
+        ],
     }
+
+
+def recents():
+    """What the picker remembers: which agent each folder was last opened with."""
+    remembered = Recents(None)
+    for name, agent in (
+        ("herdr-newtab-plus", "claude"),
+        ("atlas", "claude"),
+        ("herdr-bar", "codex"),
+    ):
+        remembered.entries.append(
+            {"path": os.path.join(HOME, "workspace", name), "agent": agent, "ts": 0}
+        )
+    return remembered
 
 
 def chips():
@@ -85,14 +109,18 @@ def chips():
     ]
 
 
-def build(query: str, selected: int, chip: int, create: str = "smart") -> Picker:
+def build(
+    query: str, selected: int, chip: int, create: str = "smart", icons: bool = False
+) -> Picker:
+    theme = Theme(selection_background="237")
+    theme.agent_icons = icons
     picker = Picker(
         snapshot=snapshot(),
         catalog=catalog(),
         chips=chips(),
         config=Config({"roots": []}),
-        recents=Recents(None),
-        theme=Theme(),
+        recents=recents(),
+        theme=theme,
         base=os.path.join(HOME, "workspace"),
     )
     # The demo drives the catalog directly rather than the filesystem, so a
@@ -120,12 +148,15 @@ def main() -> int:
         "--create", default="smart", choices=MODES, help="where Enter lands (^T in the picker)"
     )
     parser.add_argument("--panel", action="store_true", help="the ? help panel instead")
+    parser.add_argument(
+        "--icons", action="store_true", help="vendor logos (needs the Herdr Agent Icons Max font)"
+    )
     parser.add_argument("--plain", action="store_true", help="strip colors")
     parser.add_argument("--frame", action="store_true", help="draw a box around it")
     args = parser.parse_args()
 
     width, height = (int(part) for part in args.size.lower().split("x"))
-    picker = build(args.query, args.selected, args.chip, args.create)
+    picker = build(args.query, args.selected, args.chip, args.create, args.icons)
     picker.help = args.panel
     lines = picker.frame(width, height)
     lines += [""] * (height - len(lines))

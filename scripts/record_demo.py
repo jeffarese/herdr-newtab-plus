@@ -40,11 +40,10 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import demo  # noqa: E402
 from herdr_newtab import app as app_module  # noqa: E402
-from herdr_newtab import paths  # noqa: E402
+from herdr_newtab import icons, paths  # noqa: E402
 from herdr_newtab.app import CONFIRM, Picker  # noqa: E402
 from herdr_newtab.config import Config  # noqa: E402
 from herdr_newtab.session import TAB  # noqa: E402
-from herdr_newtab.state import Recents  # noqa: E402
 from herdr_newtab.textutil import char_width  # noqa: E402
 from herdr_newtab.theme import Theme  # noqa: E402
 
@@ -191,21 +190,66 @@ TREE: Dict[str, Tuple[Tuple[str, bool], ...]] = {
 }
 
 
+# What the preview finds beside the folders above: the files in each, and the
+# branch each checkout is on. A folder with no entry here is an empty one.
+FILES: Dict[str, Tuple[str, ...]] = {
+    os.path.join(BASE, "herdr-newtab-plus"): (
+        "CHANGELOG.md",
+        "herdr-plugin.toml",
+        "LICENSE",
+        "pyproject.toml",
+        "README.md",
+    ),
+    os.path.join(BASE, "herdr-bar"): (
+        "Cargo.lock",
+        "Cargo.toml",
+        "CHANGELOG.md",
+        "herdr-plugin.toml",
+        "LICENSE",
+        "README.md",
+    ),
+    os.path.join(BASE, "atlas"): ("docker-compose.yml", "Makefile", "README.md"),
+    os.path.join(BASE, "mobile-client"): ("app.json", "package.json", "README.md"),
+    os.path.join(BASE, "webhook-relay"): ("go.mod", "go.sum", "main.go", "README.md"),
+    os.path.join(BASE, "log-sink"): ("config.yaml", "README.md"),
+}
+
+BRANCHES: Dict[str, str] = {
+    os.path.join(BASE, "herdr-newtab-plus"): "main",
+    os.path.join(BASE, "herdr-bar"): "preview-pane",
+    os.path.join(BASE, "mobile-client"): "release/2.4",
+    os.path.join(BASE, "notes"): "main",
+    os.path.join(BASE, "log-sink"): "main",
+    os.path.join(BASE, "webhook-relay"): "retry-backoff",
+}
+
+
 def mount() -> None:
-    """Put the virtual tree where the picker's two filesystem questions look."""
+    """Put the virtual tree where the picker's filesystem questions look."""
 
     def subdirectories(directory: str, hidden: bool = False) -> Tuple[Tuple[str, bool], ...]:
         return TREE.get(directory.rstrip(os.sep) or os.sep, ())
 
-    def is_directory(path: str) -> bool:
+    def is_directory(path: str, fresh: bool = False) -> bool:
         cleaned = path.rstrip(os.sep) or os.sep
         if cleaned in TREE:
             return True
         parent, name = os.path.split(cleaned)
         return any(entry == name for entry, _ in TREE.get(parent, ()))
 
+    def contents(folder: str) -> Optional[paths.Contents]:
+        if not is_directory(folder):
+            return None
+        dirs = tuple(sorted((name for name, _ in TREE.get(folder, ())), key=str.lower))
+        return paths.Contents(dirs, tuple(sorted(FILES.get(folder, ()), key=str.lower)))
+
+    def git_branch(folder: str, listed: Optional[paths.Contents] = None) -> Optional[str]:
+        return BRANCHES.get(folder)
+
     paths.subdirectories = subdirectories  # type: ignore[assignment]
     paths.is_directory = is_directory  # type: ignore[assignment]
+    paths.contents = contents  # type: ignore[assignment]
+    paths.git_branch = git_branch  # type: ignore[assignment]
 
 
 # -- the session under the camera --------------------------------------------
@@ -241,13 +285,17 @@ class Recorder(object):
         self.clock = Clock()
         app_module.time = types.SimpleNamespace(monotonic=self.clock.monotonic)
 
+        theme = Theme(selection_background="237")
+        # Filmed with the logos whenever the machine recording it can draw them,
+        # which is the same rule the picker itself follows.
+        theme.agent_icons = icon_font_path() is not None
         self.picker = Picker(
             snapshot=demo.snapshot(),
             catalog=demo.catalog(),
             chips=demo.chips(),
             config=Config({"roots": []}),
-            recents=Recents(None),
-            theme=Theme(selection_background="237"),
+            recents=demo.recents(),
+            theme=theme,
             base=BASE,
         )
 
@@ -329,9 +377,19 @@ def perform(recorder: Recorder) -> None:
     recorder.say("before you type: folders you were just in, and the ones already open")
     recorder.hold(2.4)
 
-    recorder.say("↑↓ moves · the line above the hints says what ⏎ will do")
-    recorder.repeat("down", 4, 0.55)
+    recorder.say("each row shows the agent it last opened with · ◐ ◉ say one is in there now")
+    recorder.hold(2.6)
+
+    recorder.say("on the right, the folder itself: its space, who is in it, what is inside")
+    recorder.hold(2.6)
+
+    recorder.say("↑↓ moves · the agent and the preview follow · the → line says what ⏎ will do")
+    recorder.repeat("down", 4, 0.7)
     recorder.hold(1.1)
+
+    recorder.say("^O hides the preview, and brings it back")
+    recorder.key("ctrl+o", 1.4)
+    recorder.key("ctrl+o", 1.0)
 
     recorder.say("type a few letters · fuzzy, over every folder it knows")
     recorder.type("relay", 0.15)
@@ -357,9 +415,9 @@ def perform(recorder: Recorder) -> None:
     # Back to the resting list for the rows that follow: the agent, the skip
     # toggle and the create mode all live under the list, and explaining them
     # over a list filtered down to one folder would waste most of the popup.
-    recorder.say("⇧⇥ picks the agent that starts in the new tab")
+    recorder.say("⇧⇥ picks a different agent for the new tab")
     recorder.key("ctrl+u", 0.6)
-    recorder.repeat("shift+tab", 3, 0.85)
+    recorder.repeat("shift+tab", 4, 0.7)
 
     recorder.say("^Y arms it to start with its permission prompts off")
     recorder.key("ctrl+y", 2.2)
@@ -496,6 +554,19 @@ def find_font(bold: bool):
     raise SystemExit("no monospace font found; install Iosevka Term or JetBrains Mono")
 
 
+def icon_font_path() -> Optional[str]:
+    """herdr-radar's icon font, wherever this machine keeps its fonts."""
+    for directory in FONT_DIRS:
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            continue
+        for name in names:
+            if name.startswith(icons.FILE_PREFIX) and name.endswith(".ttf"):
+                return os.path.join(directory, name)
+    return None
+
+
 def ui_font(size: int, bold: bool = False):
     from PIL import ImageFont
 
@@ -569,8 +640,12 @@ def text_length(draw, text: str, font, fallback) -> float:
 
 class Painter(object):
     def __init__(self, compact: bool = False) -> None:
+        from PIL import ImageFont
+
         self.font = find_font(False)
         self.font_bold = find_font(True)
+        icon_path = icon_font_path()
+        self.icon_font = ImageFont.truetype(icon_path, FONT_SIZE) if icon_path else None
         self.caption_font = ui_font(CAPTION_SIZE)
         self.chip_font = ui_font(CHIP_SIZE, bold=True)
         # The keycaps in the captions are terminal glyphs; the UI font has no
@@ -648,6 +723,24 @@ class Painter(object):
                     )
                 if cell.char in ("", " "):
                     continue
+                if cell.char in BOX:
+                    self._box(draw, cell, origin_x + column * self.cell_w, y)
+                    continue
+                if icons.is_logo(cell.char) and self.icon_font is not None:
+                    # Centre the ink in its cell, whatever the icon font's own
+                    # ascent and advance -- the way herdr-bar's recorder does.
+                    left_ink, top_ink, right_ink, bottom_ink = self.icon_font.getbbox(cell.char)
+                    draw.text(
+                        (
+                            origin_x + column * self.cell_w
+                            + (self.cell_w - (right_ink - left_ink)) / 2 - left_ink,
+                            y + (self.cell_h - (bottom_ink - top_ink)) / 2 - top_ink,
+                        ),
+                        cell.char,
+                        font=self.icon_font,
+                        fill=cell.fg,
+                    )
+                    continue
                 draw.text(
                     (origin_x + column * self.cell_w, y + self.baseline),
                     cell.char,
@@ -679,6 +772,34 @@ class Painter(object):
             self._chip(draw, frame, right, caption_y)
         return image
 
+    def _box(self, draw, cell: "Cell", x: int, y: int) -> None:
+        """A line-drawing character as lines, edge to edge of its cell.
+
+        A terminal joins these into one unbroken rule; a font's glyph stops
+        short of the line height Pillow lays rows out at, which films the
+        divider beside the preview as a dashed line.
+        """
+        up, down, across, heavy = BOX[cell.char]
+        thin = max(1, round(self.cell_h / 20))
+        weight = thin * 2 if heavy else thin
+        middle_x = x + self.cell_w // 2
+        middle_y = y + self.cell_h // 2
+        if across:
+            draw.rectangle(
+                (x, middle_y - thin // 2, x + self.cell_w - 1, middle_y - thin // 2 + thin - 1),
+                fill=cell.fg,
+            )
+        if up or down:
+            draw.rectangle(
+                (
+                    middle_x - weight // 2,
+                    y if up else middle_y,
+                    middle_x - weight // 2 + weight - 1,
+                    y + self.cell_h - 1 if down else middle_y,
+                ),
+                fill=cell.fg,
+            )
+
     def _chip(self, draw, frame: Frame, right: int, y: int) -> None:
         label = frame.chip
         text_w = int(text_length(draw, label, self.chip_font, self.chip_fallback))
@@ -697,6 +818,16 @@ class Painter(object):
             self.chip_fallback,
             blend(CANVAS_BG, CHIP_FG, fade),
         )
+
+
+# char -> (reaches up, reaches down, crosses, heavy)
+BOX = {
+    "│": (True, True, False, False),
+    "┃": (True, True, False, True),
+    "┬": (False, True, True, False),
+    "┴": (True, False, True, False),
+    "─": (False, False, True, False),
+}
 
 
 def blend(back, front, amount: float):

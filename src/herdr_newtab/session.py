@@ -129,6 +129,98 @@ def space_folders(snapshot: Dict[str, Any]) -> Dict[str, Space]:
     return found
 
 
+# Which status a folder shows when several agents stand in it: the one that
+# wants you first, in herdr-bar's order.
+STATUS_ORDER = ("blocked", "done", "working", "idle")
+
+
+class FolderAgent(NamedTuple):
+    """An agent standing in a folder, as the preview lists it."""
+
+    kind: str  # "claude", "codex", ... or "" when Herdr did not say
+    name: str  # the agent's own name when it has one, otherwise its kind
+    status: str  # one of STATUS_ORDER, or "" when Herdr reports none
+
+
+def _agent_records(snapshot: Dict[str, Any]) -> List[Tuple[Dict[str, Any], str, str]]:
+    """Every agent the snapshot knows of, with the folder it is in and its status.
+
+    Agents carry a pane rather than a folder, so the folder is the agent's own
+    ``cwd`` when the snapshot has one and its pane's otherwise. A pane that
+    reports an agent status but has no agent record of its own is counted too,
+    once. A status Herdr does not report, or reports as ``none``, is ``""``.
+    """
+    panes: Dict[str, Dict[str, Any]] = {}
+    for raw in snapshot.get("panes") or []:
+        if isinstance(raw, dict) and isinstance(raw.get("pane_id"), str):
+            panes[raw["pane_id"]] = raw
+
+    agents = [raw for raw in snapshot.get("agents") or [] if isinstance(raw, dict)]
+    claimed = {raw.get("pane_id") for raw in agents}
+    records = agents + [
+        pane
+        for pane_id, pane in panes.items()
+        if pane_id not in claimed and (pane.get("agent_status") or pane.get("agent"))
+    ]
+
+    out: List[Tuple[Dict[str, Any], str, str]] = []
+    for raw in records:
+        status = raw.get("agent_status") or raw.get("status")
+        pane = panes.get(raw.get("pane_id")) or {}
+        cwd = next(
+            (
+                value
+                for value in (
+                    raw.get("foreground_cwd"),
+                    raw.get("cwd"),
+                    pane.get("foreground_cwd"),
+                    pane.get("cwd"),
+                )
+                if isinstance(value, str) and value
+            ),
+            None,
+        )
+        if cwd is not None:
+            out.append((raw, cwd, status if status in STATUS_ORDER else ""))
+    return out
+
+
+def _folder_keys(cwd: str) -> Set[str]:
+    # Indexed under both spellings, as space_folders is, so a folder picked from
+    # either side of a symlink finds what is standing in it.
+    return {key for key in (normalize(cwd), resolved(cwd)) if key}
+
+
+def folder_statuses(snapshot: Dict[str, Any]) -> Dict[str, str]:
+    """Every folder an agent is standing in, mapped to its most urgent status."""
+    rank = {status: index for index, status in enumerate(STATUS_ORDER)}
+    found: Dict[str, str] = {}
+    for _, cwd, status in _agent_records(snapshot):
+        if not status:
+            continue
+        for key in _folder_keys(cwd):
+            current = found.get(key)
+            if current is None or rank[status] < rank[current]:
+                found[key] = status
+    return found
+
+
+def folder_agents(snapshot: Dict[str, Any]) -> Dict[str, List[FolderAgent]]:
+    """Every folder an agent is standing in, mapped to all of them, most urgent first."""
+    rank = {status: index for index, status in enumerate(STATUS_ORDER)}
+    found: Dict[str, List[FolderAgent]] = {}
+    for raw, cwd, status in _agent_records(snapshot):
+        kind = raw.get("agent")
+        kind = kind if isinstance(kind, str) else ""
+        name = raw.get("name")
+        agent = FolderAgent(kind, name if isinstance(name, str) and name else kind, status)
+        for key in _folder_keys(cwd):
+            found.setdefault(key, []).append(agent)
+    for agents in found.values():
+        agents.sort(key=lambda agent: rank.get(agent.status, len(rank)))
+    return found
+
+
 def live_agent_names(snapshot: Dict[str, Any]) -> Set[str]:
     """Names already taken by live agents, so a new one can avoid them."""
     names: Set[str] = set()

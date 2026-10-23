@@ -249,6 +249,35 @@ class RememberedAgentTest(unittest.TestCase):
         self.assertTrue(app.agent().is_none)
 
 
+class RowDecorationTest(unittest.TestCase):
+    def test_each_row_shows_the_agent_its_folder_was_last_opened_with(self):
+        recents = Recents(None)
+        recents.touch("/a/b", "codex")
+        app = picker(catalog("a", "b"), recents=recents)
+        app.theme.agent_icons = True
+        lines = plain(app.frame(80, 20)).splitlines()
+        row_a = next(line for line in lines if " a " in line)
+        row_b = next(line for line in lines if " b " in line)
+        self.assertNotIn("\ue1a1", row_a)
+        self.assertIn("\ue1a1", row_b)
+
+    def test_no_memory_is_shown_when_the_memory_is_not_used(self):
+        recents = Recents(None)
+        recents.touch("/a/b", "codex")
+        app = picker(
+            catalog("b"), recents=recents, config=Config({"roots": [], "default_agent": "none"})
+        )
+        self.assertNotIn("codex ·", plain(app.frame(80, 20)))
+
+    def test_a_folder_with_an_agent_in_it_shows_the_agents_status(self):
+        snap = snapshot([pane("w1:p1", "/a/b")])
+        snap["agents"] = [{"pane_id": "w1:p1", "agent": "claude", "agent_status": "blocked"}]
+        app = picker(catalog("a", "b"), snap=snap)
+        lines = plain(app.frame(80, 20)).splitlines()
+        self.assertTrue(next(line for line in lines if " b " in line).rstrip().endswith("◉"))
+        self.assertNotIn("◉", next(line for line in lines if " a " in line))
+
+
 class MouseTest(unittest.TestCase):
     def setUp(self):
         self.app = picker(catalog("a", "b", "c"))
@@ -264,6 +293,20 @@ class MouseTest(unittest.TestCase):
         start, _ = self.app._chip_spans[2]
         self.app.handle_mouse(Event(MOUSE, PRESS, start + 1, self.app._chip_row + 1))
         self.assertEqual(self.app.chip, 2)
+
+    def test_a_click_lands_on_the_chip_it_hits_when_the_row_is_scrolled(self):
+        from herdr_newtab.agents import Agent
+
+        many = [Agent("", "shell")] + [Agent("k%d" % i, "agent-%d" % i) for i in range(12)]
+        self.app.chips = many
+        self.app.chip = 10
+        self.app.frame(44, 20)
+        start, end = self.app._chip_spans[9]
+        self.assertGreaterEqual(start, 0)
+        self.app.handle_mouse(Event(MOUSE, PRESS, start + 1, self.app._chip_row + 1))
+        self.assertEqual(self.app.chip, 9)
+        # A chip scrolled out of view cannot be clicked by accident.
+        self.assertEqual(self.app._chip_spans[0], (-1, -1))
 
     def test_clicking_past_the_list_does_nothing(self):
         self.assertIsNone(self.app.handle_mouse(Event(MOUSE, PRESS, 4, 19)))
@@ -325,14 +368,16 @@ class CreateModeTest(unittest.TestCase):
         press(app, "ctrl+t")
         self.assertEqual(recents.create_mode(), TAB)
 
-    def test_the_frame_badges_an_override_and_the_footer_names_the_mode(self):
+    def test_the_switch_moves_with_the_mode_and_the_footer_names_it(self):
         app = self.app()
         app.set_query(self.tree.path("fresh"))
         self.assertIn(("^T", "smart"), app._hints())
-        self.assertNotIn("[tab]", plain(app.frame(80, 20)))  # nothing to badge yet
+        self.assertIn("smart   tab   space", plain(app.frame(80, 20)))
         press(app, "ctrl+t")
         self.assertIn(("^T", TAB), app._hints())
-        self.assertIn("[tab]", plain(app.frame(80, 20)))
+        self.assertIn("smart   tab   space", plain(app.frame(80, 20)))
+        # A popup too narrow for the switch still says an override is on.
+        self.assertIn("[tab]", plain(app.frame(44, 20)))
 
     def test_a_forced_mode_survives_moving_through_the_list(self):
         app = self.app()

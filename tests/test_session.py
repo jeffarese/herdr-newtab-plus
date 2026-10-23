@@ -12,6 +12,7 @@ from herdr_newtab.session import (
     clear_resolved,
     created_ids,
     focused_cwd,
+    folder_statuses,
     live_agent_names,
     next_mode,
     normalize,
@@ -181,6 +182,54 @@ class SnapshotFieldsTest(unittest.TestCase):
         result = {"tab": {"tab_id": "w1:t1"}, "root_pane": {"pane_id": "w1:p1"}}
         self.assertEqual(created_ids(result), ("w1:t1", "w1:p1"))
         self.assertEqual(created_ids({}), (None, None))
+
+
+class FolderStatusTest(unittest.TestCase):
+    def snap(self, agents, panes=None):
+        snap = snapshot(panes or [pane("w1:p1", "/work/api"), pane("w1:p2", "/work/web")])
+        snap["agents"] = agents
+        return snap
+
+    def test_an_agent_marks_the_folder_its_pane_is_standing_in(self):
+        found = folder_statuses(self.snap([{"pane_id": "w1:p1", "agent_status": "working"}]))
+        self.assertEqual(found.get("/work/api"), "working")
+        self.assertNotIn("/work/web", found)
+
+    def test_the_most_urgent_status_wins(self):
+        found = folder_statuses(
+            self.snap(
+                [
+                    {"pane_id": "w1:p1", "agent_status": "idle"},
+                    {"pane_id": "w1:p2", "agent_status": "working", "cwd": "/work/api"},
+                    {"pane_id": "w1:p1", "agent_status": "blocked"},
+                ]
+            )
+        )
+        self.assertEqual(found.get("/work/api"), "blocked")
+
+    def test_an_agents_own_cwd_beats_its_panes(self):
+        found = folder_statuses(
+            self.snap([{"pane_id": "w1:p1", "agent_status": "done", "cwd": "/work/web/"}])
+        )
+        self.assertEqual(found.get("/work/web"), "done")
+        self.assertNotIn("/work/api", found)
+
+    def test_a_status_herdr_does_not_report_is_left_out(self):
+        found = folder_statuses(
+            self.snap(
+                [
+                    {"pane_id": "w1:p1", "agent_status": "none"},
+                    {"pane_id": "w1:p2"},
+                    {"pane_id": "w1:p9", "agent_status": "working"},  # no such pane
+                    "junk",
+                ]
+            )
+        )
+        self.assertEqual(found, {})
+
+    def test_a_pane_that_reports_an_agent_status_counts_too(self):
+        panes = [dict(pane("w1:p1", "/work/api"), agent_status="blocked")]
+        self.assertEqual(folder_statuses(self.snap([], panes)).get("/work/api"), "blocked")
 
 
 class ResolvedTest(unittest.TestCase):

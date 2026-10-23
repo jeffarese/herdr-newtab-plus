@@ -33,6 +33,12 @@ DEFAULTS: Dict[str, Any] = {
     "hidden": False,  # offer dot-directories during path completion
     "mouse": True,
     "max_suggestions": 200,
+    # The folder under the cursor, on the right of the list, as in herdr-bar:
+    # "auto" (when the popup is wide enough) | true | false (hidden until ^O).
+    "preview": "auto",
+    # Vendor logos from the Herdr Agent Icons Max font, as herdr-bar draws them:
+    # "auto" (when the font is installed here) | "font" (always) | "none".
+    "agent_icons": "auto",
     "colors": {},  # role -> "#rrggbb" | ansi name | 0-255
     "selection_background": "auto",  # "auto" | "none" | "#rrggbb" | 0-255
 }
@@ -78,6 +84,14 @@ class Config(object):
             self.max_suggestions = max(20, int(merged.get("max_suggestions", 200)))
         except (TypeError, ValueError):
             self.max_suggestions = 200
+
+        preview = merged.get("preview")
+        self.preview = preview if preview in (True, False, "auto") else "auto"
+
+        icons = merged.get("agent_icons")
+        if isinstance(icons, bool):
+            icons = "font" if icons else "none"
+        self.agent_icons = icons if icons in ("auto", "font", "none") else "auto"
 
         colors = merged.get("colors")
         self.colors = colors if isinstance(colors, dict) else {}

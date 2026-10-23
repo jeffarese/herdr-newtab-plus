@@ -131,13 +131,104 @@ def subdirectories(directory: str, hidden: bool = False) -> Tuple[Tuple[str, boo
     return result
 
 
+class Contents(NamedTuple):
+    """What is inside a folder, for the preview: names only, sorted, dot-files kept."""
+
+    dirs: Tuple[str, ...]
+    files: Tuple[str, ...]
+    readable: bool = True
+
+
+# The preview reads the folder under the cursor, and that one read also answers
+# whether the folder exists -- the question every frame asks of the folder Enter
+# would use. So a folder the preview has listed is never stat-ed again, and
+# moving onto one costs exactly the read that fills the preview. ``None`` means
+# it is not a directory at all.
+_CONTENTS: Dict[str, Optional[Contents]] = {}
+_BRANCHES: Dict[str, Optional[str]] = {}
+
+
+def contents(folder: str) -> Optional[Contents]:
+    """Everything inside a folder, directories first, or None when it is not one."""
+    if folder in _CONTENTS:
+        return _CONTENTS[folder]
+    found: Optional[Contents]
+    try:
+        dirs: List[str] = []
+        files: List[str] = []
+        with os.scandir(folder) as scan:
+            for entry in scan:
+                try:
+                    is_dir = entry.is_dir()
+                except OSError:
+                    is_dir = False
+                (dirs if is_dir else files).append(entry.name)
+        dirs.sort(key=str.lower)
+        files.sort(key=str.lower)
+        found = Contents(tuple(dirs), tuple(files))
+    except PermissionError:
+        found = Contents((), (), readable=False)  # there, but not ours to read
+    except OSError:
+        found = None
+    _CONTENTS[folder] = found
+    return found
+
+
+def _read_line(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            return handle.readline(512).strip()
+    except OSError:
+        return ""
+
+
+def git_branch(folder: str, listed: Optional[Contents] = None) -> Optional[str]:
+    """The branch checked out in a folder, a short hash when detached, or None.
+
+    The folder's own listing says whether ``.git`` is a directory (a checkout)
+    or a file (a worktree, pointing at its git dir), so the branch costs one
+    small read, or two for a worktree, and nothing for a folder that is neither.
+    """
+    if folder in _BRANCHES:
+        return _BRANCHES[folder]
+    listed = listed if listed is not None else contents(folder)
+    branch: Optional[str] = None
+    if listed is not None:
+        head = ""
+        if ".git" in listed.dirs:
+            head = _read_line(os.path.join(folder, ".git", "HEAD"))
+        elif ".git" in listed.files:
+            pointer = _read_line(os.path.join(folder, ".git"))
+            if pointer.startswith("gitdir:"):
+                gitdir = pointer[len("gitdir:") :].strip()
+                if not os.path.isabs(gitdir):
+                    gitdir = os.path.join(folder, gitdir)
+                head = _read_line(os.path.join(gitdir, "HEAD"))
+        if head.startswith("ref:"):
+            ref = head[len("ref:") :].strip()
+            branch = ref[len("refs/heads/") :] if ref.startswith("refs/heads/") else ref
+        elif head:
+            branch = head[:7]
+    _BRANCHES[folder] = branch
+    return branch
+
+
 def clear_cache() -> None:
     """Forget everything read off the filesystem. What the rescan key does."""
     _LISTINGS.clear()
+    _CONTENTS.clear()
+    _BRANCHES.clear()
     clear_resolved()
 
 
-def is_directory(path: str) -> bool:
+def is_directory(path: str, fresh: bool = False) -> bool:
+    """Whether a path is a folder; answered from the preview's read when it has one.
+
+    ``fresh`` asks the filesystem whatever has been read before, for the one
+    moment the answer has to be current: just before something is created there.
+    """
+    if not fresh and path in _CONTENTS:
+        return _CONTENTS[path] is not None
     try:
         return os.path.isdir(path)
     except OSError:
