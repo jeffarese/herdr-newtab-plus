@@ -1,5 +1,6 @@
 //! A fake Herdr on a Unix socket that answers the slice of the protocol the
-//! plugin uses and logs every request (parity.py's RecordingHerdr).
+//! plugin uses and logs every request (parity.py's RecordingHerdr), with the
+//! moment it arrived (for `examples/bench`, bench_process.py's FakeHerdr).
 
 use crate::pyjson::{self, Map, Value};
 use std::io::{Read, Write};
@@ -16,7 +17,8 @@ struct Shared {
     /// `{"raw": "..."}` sent as is, or `{"by_call": [answer, ...]}` by call
     /// number, the last repeating.
     answers: Value,
-    log: Mutex<Vec<(String, Value)>>,
+    /// Every request as `(method, params, when it was read)`.
+    log: Mutex<Vec<(String, Value, Instant)>>,
     closing: AtomicBool,
 }
 
@@ -56,7 +58,7 @@ impl Herdr {
         Herdr { path: path.to_path_buf(), shared, accept: Some(accept) }
     }
 
-    fn log(&self) -> std::sync::MutexGuard<'_, Vec<(String, Value)>> {
+    fn log(&self) -> std::sync::MutexGuard<'_, Vec<(String, Value, Instant)>> {
         self.shared.log.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -64,28 +66,59 @@ impl Herdr {
     pub fn changes(&self) -> Vec<Value> {
         self.log()
             .iter()
-            .filter(|(m, _)| m != "session.snapshot")
-            .map(|(m, p)| Value::List(vec![Value::str(m.clone()), p.clone()]))
+            .filter(|(m, _, _)| m != "session.snapshot")
+            .map(|(m, p, _)| Value::List(vec![Value::str(m.clone()), p.clone()]))
             .collect()
     }
 
     pub fn has_create(&self) -> bool {
-        self.log().iter().any(|(m, _)| m == "tab.create" || m == "workspace.create")
+        self.log().iter().any(|(m, _, _)| m == "tab.create" || m == "workspace.create")
     }
 
     pub fn reads(&self) -> usize {
-        self.log().iter().filter(|(m, _)| m == "session.snapshot").count()
+        self.log().iter().filter(|(m, _, _)| m == "session.snapshot").count()
     }
 
     pub fn wait_for(&self, method: &str, timeout: f64) -> bool {
         let deadline = Instant::now() + Duration::from_secs_f64(timeout);
         while Instant::now() < deadline {
-            if self.log().iter().any(|(m, _)| m == method) {
+            if self.log().iter().any(|(m, _, _)| m == method) {
                 return true;
             }
             std::thread::sleep(Duration::from_millis(20));
         }
         false
+    }
+
+    /// Forget every request so far.
+    #[allow(dead_code)] // examples/bench
+    pub fn reset(&self) {
+        self.log().clear();
+    }
+
+    /// How many requests have arrived.
+    #[allow(dead_code)] // examples/bench
+    pub fn count(&self) -> usize {
+        self.log().len()
+    }
+
+    /// When the first `method` request arrived, if one has.
+    #[allow(dead_code)] // examples/bench
+    pub fn first(&self, method: &str) -> Option<Instant> {
+        self.log().iter().find(|(m, _, _)| m == method).map(|(_, _, at)| *at)
+    }
+
+    /// When the first `method` request arrived, waiting up to `timeout` for it.
+    #[allow(dead_code)] // examples/bench
+    pub fn wait_first(&self, method: &str, timeout: f64) -> Option<Instant> {
+        let deadline = Instant::now() + Duration::from_secs_f64(timeout);
+        while Instant::now() < deadline {
+            if let Some(at) = self.first(method) {
+                return Some(at);
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        None
     }
 
     pub fn close(&mut self) {
@@ -126,8 +159,8 @@ fn serve(shared: &Shared, mut conn: UnixStream) {
     let params = if params.truthy() { params.clone() } else { Value::Dict(Map::new()) };
     let count = {
         let mut log = shared.log.lock().unwrap_or_else(|e| e.into_inner());
-        log.push((method.clone(), params));
-        log.iter().filter(|(m, _)| *m == method).count()
+        log.push((method.clone(), params, Instant::now()));
+        log.iter().filter(|(m, _, _)| *m == method).count()
     };
     let _ = conn.write_all(&answer(shared, &method, count));
 }
