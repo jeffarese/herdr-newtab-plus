@@ -5,7 +5,9 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 
-# Intermediate PNGs from scripts/record_demo.py; the .mp4 and .gif are kept.
+# What examples/record_demo leaves in demo/ besides the .mp4 and .gif that are
+# kept: its working files (the lossless master, the GIF palette), and the PNGs
+# of --stills and --frame.
 demo/.frames/
 demo/frame-*.png
 demo/scene-*.png

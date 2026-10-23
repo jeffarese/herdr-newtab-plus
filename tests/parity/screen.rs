@@ -258,6 +258,15 @@ impl Screen {
         }
     }
 
+    /// One cell, for the demo recorder: the character (None for the second
+    /// half of a wide one), then fg, bg, bold, underline and reverse. Colors
+    /// are the SGR parameters as written, e.g. `38;5;237` or `48;2;1;2;3`.
+    #[allow(dead_code)]
+    pub fn cell(&self, y: usize, x: usize) -> (Option<char>, Option<&str>, Option<&str>, bool, bool, bool) {
+        let (c, s) = &self.cells[y][x];
+        (*c, s.fg.as_deref(), s.bg.as_deref(), s.bold, s.underline, s.reverse)
+    }
+
     /// Each row as its text, then its style runs.
     pub fn dump(&self) -> Vec<String> {
         let default = Style::default();
