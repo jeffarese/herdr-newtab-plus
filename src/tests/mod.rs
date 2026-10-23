@@ -2,6 +2,7 @@
 
 mod agents;
 mod app;
+mod bench;
 mod cli;
 mod icons;
 mod keys;

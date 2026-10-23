@@ -181,16 +181,21 @@ impl Config {
     }
 
     pub fn wants_zoxide(&self, installed: bool) -> bool {
-        if self.zoxide.is_true() {
-            return true;
-        }
-        if self.zoxide.is_false() {
-            return false;
-        }
-        installed
+        zoxide_wanted(&self.zoxide, installed)
     }
 
     pub fn colors_has(&self, role: &str) -> bool {
         self.colors.contains_key(role)
     }
+}
+
+/// `Config::wants_zoxide`, for the setting alone.
+pub fn zoxide_wanted(setting: &Value, installed: bool) -> bool {
+    if setting.is_true() {
+        return true;
+    }
+    if setting.is_false() {
+        return false;
+    }
+    installed
 }

@@ -122,7 +122,7 @@ pub fn focused_cwd(snapshot: &Value) -> Option<String> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SpaceMap {
     entries: Vec<(String, Space)>,
-    index: HashMap<String, usize>,
+    index: crate::fxhash::FxHashMap<String, usize>,
 }
 
 impl SpaceMap {
@@ -327,6 +327,22 @@ pub fn live_agent_names(snapshot: &Value) -> HashSet<String> {
         .collect()
 }
 
+/// Whether `normalize` would hand `path` back unchanged: absolute, nothing
+/// to expand or strip, and nothing for normpath to fold. Every scanned root
+/// row is one, and the slow path's allocations add up over thousands.
+pub(crate) fn is_normal(path: &str) -> bool {
+    let Some(last) = path.chars().next_back() else { return false };
+    path.starts_with('/')
+        && (path.len() == 1 || last != '/')
+        && !pystr::is_space(last)
+        && !path.contains('$')
+        && !path.contains("//")
+        && !path.contains("/./")
+        && !path.contains("/../")
+        && !path.ends_with("/.")
+        && !path.ends_with("/..")
+}
+
 /// A comparable form of a path: expanded, absolute, no trailing slash.
 ///
 /// Symlinks are left alone, because this is also the path handed to Herdr
@@ -334,6 +350,14 @@ pub fn live_agent_names(snapshot: &Value) -> HashSet<String> {
 /// should see. Matching an existing space additionally compares `resolved`
 /// forms.
 pub fn normalize(path: &str) -> String {
+    if is_normal(path) {
+        return path.to_string();
+    }
+    normalize_slow(path)
+}
+
+/// `normalize` the long way, for every path.
+pub(crate) fn normalize_slow(path: &str) -> String {
     let expanded = pyos::expanduser(&pyos::expandvars(pystr::strip(path)));
     if expanded.is_empty() {
         return String::new();
@@ -355,6 +379,9 @@ pub fn normalize(path: &str) -> String {
 // and short-lived, and the rescan key clears both.
 thread_local! {
     pub(crate) static RESOLVED: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    /// Paths found to exist and not be symlinks, so that folders sharing a
+    /// parent do not follow it again.
+    static REAL: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 /// The same folder with every symlink followed.
@@ -370,7 +397,7 @@ pub fn resolved(path: &str) -> String {
     if let Some(found) = RESOLVED.with(|cache| cache.borrow().get(&folder).cloned()) {
         return found;
     }
-    let real = pyos::realpath(&folder);
+    let real = REAL.with(|known| pyos::realpath_with(&folder, &mut known.borrow_mut()));
     let trimmed = real.trim_end_matches('/');
     let found = if trimmed.is_empty() { "/".to_string() } else { trimmed.to_string() };
     RESOLVED.with(|cache| cache.borrow_mut().insert(folder, found.clone()));
@@ -380,6 +407,7 @@ pub fn resolved(path: &str) -> String {
 /// Forget every followed symlink, so the next question is asked afresh.
 pub fn clear_resolved() {
     RESOLVED.with(|cache| cache.borrow_mut().clear());
+    REAL.with(|known| known.borrow_mut().clear());
 }
 
 /// Decide whether the picked folder becomes a tab or a whole new space.

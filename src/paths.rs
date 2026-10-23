@@ -15,10 +15,14 @@
 //! type your way from one into the other.
 
 use crate::fuzzy::{match_prepared, split_query, Match, Prepared, Term};
+use crate::fxhash::FxHashMap;
+#[cfg(test)]
 use crate::pyjson::Value;
 use crate::pyos;
 use crate::pystr;
-use crate::session::{clear_resolved, normalize, space_folders, SpaceMap};
+#[cfg(test)]
+use crate::session::space_folders;
+use crate::session::{clear_resolved, normalize, SpaceMap};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -132,12 +136,16 @@ thread_local! {
 }
 
 pub fn home() -> String {
+    with_home(|home| home.to_string())
+}
+
+/// `f(home())`, without copying it.
+pub fn with_home<R>(f: impl FnOnce(&str) -> R) -> R {
     HOME.with(|home| {
-        let mut home = home.borrow_mut();
-        if home.is_empty() {
-            *home = pyos::expanduser("~");
+        if home.borrow().is_empty() {
+            *home.borrow_mut() = pyos::expanduser("~");
         }
-        home.clone()
+        f(&home.borrow())
     })
 }
 
@@ -149,16 +157,17 @@ pub fn set_home(path: &str) {
 
 /// The path as a person would write it: `~` for home.
 pub fn display(path: &str) -> String {
-    let root = home();
-    if path == root {
-        return "~".to_string();
-    }
-    if let Some(rest) = path.strip_prefix(root.as_str()) {
-        if rest.starts_with('/') {
-            return format!("~{}", rest);
+    with_home(|root| {
+        if path == root {
+            return "~".to_string();
         }
-    }
-    path.to_string()
+        if let Some(rest) = path.strip_prefix(root) {
+            if rest.starts_with('/') {
+                return format!("~{}", rest);
+            }
+        }
+        path.to_string()
+    })
 }
 
 /// What a row leads with. Home is written as `~`, not as your username.
@@ -219,14 +228,15 @@ fn name_of(entry: &std::fs::DirEntry) -> String {
 
 /// `os.path.isdir(path)`.
 pub fn isdir(path: &str) -> bool {
-    !path.is_empty() && std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
+    crate::lookups::ask(|| !path.is_empty() && std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false))
 }
 
 fn scan_subdirectories(directory: &str, hidden: bool) -> Vec<(String, bool)> {
-    let Ok(scan) = std::fs::read_dir(if directory.is_empty() { "\0" } else { directory }) else {
+    let Ok(scan) = crate::lookups::ask(|| std::fs::read_dir(if directory.is_empty() { "\0" } else { directory }))
+    else {
         return Vec::new();
     };
-    let mut entries: Vec<(String, bool)> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
     for entry in scan {
         let Ok(entry) = entry else { return Vec::new() };
         let name = name_of(&entry);
@@ -236,11 +246,89 @@ fn scan_subdirectories(directory: &str, hidden: bool) -> Vec<(String, bool)> {
         if !entry_is_dir(&entry) {
             continue;
         }
-        let git = isdir(&pyos::join(&pyos::join(directory, &name), ".git"));
-        entries.push((name, git));
+        names.push(name);
     }
+    // One stat per folder, for its .git: the bulk of a big root's cost, and
+    // independent folder to folder. Each is resolved from the open directory
+    // rather than from `/`: a quarter to a half cheaper, the deeper the root.
+    let gits: Vec<bool> = crate::lookups::ask_many(names.len(), || {
+        let opened = std::fs::File::open(directory).ok();
+        crate::par::map_chunks_from(&names, STAT_PARALLEL, |chunk| {
+            chunk.iter().map(|name| git_inside(opened.as_ref(), directory, name)).collect()
+        })
+    });
+    let mut entries: Vec<(String, bool)> = names.into_iter().zip(gits).collect();
     entries.sort_by_cached_key(|(name, _)| pystr::lower(name));
     entries
+}
+
+/// `isdir(join(directory, name, ".git"))`, asked of `dir`, the directory
+/// already open, as a path relative to it. A path the whole of which would be
+/// too long for the kernel is asked the long way, so it fails as it would.
+fn git_inside(dir: Option<&std::fs::File>, directory: &str, name: &str) -> bool {
+    use std::os::fd::AsRawFd;
+    let whole = directory.len() + name.len() + "/".len() + "/.git".len();
+    let relative = std::ffi::CString::new(format!("{name}/.git"));
+    let (Some(dir), Ok(relative), true) = (dir, relative, whole < libc::PATH_MAX as usize) else {
+        return isdir(&pyos::join(&pyos::join(directory, name), ".git"));
+    };
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: a valid directory descriptor, a NUL-terminated path and room
+    // for the answer, which is read only when the call says it wrote one.
+    let found = unsafe { libc::fstatat(dir.as_raw_fd(), relative.as_ptr(), stat.as_mut_ptr(), 0) } == 0;
+    found && (unsafe { stat.assume_init() }.st_mode & libc::S_IFMT) == libc::S_IFDIR
+}
+
+/// Below this many paths, asking the filesystem on one thread is quicker
+/// than starting more. A stat costs microseconds, far more than a row's
+/// scoring, so the bar is lower than `par::MIN_PARALLEL`.
+const STAT_PARALLEL: usize = 64;
+
+/// Every root's listing, read on whichever thread calls it, for
+/// `seed_listings` to hand to the picker's thread. The startup reads them
+/// while Herdr answers the snapshot request.
+pub fn prefetch_roots(roots: &[String], hidden: bool) -> Vec<(String, Vec<(String, bool)>)> {
+    let mut out: Vec<(String, Vec<(String, bool)>)> = Vec::new();
+    for raw in roots {
+        let directory = normalize(raw);
+        if directory.is_empty() || out.iter().any(|(known, _)| *known == directory) || !isdir(&directory) {
+            continue;
+        }
+        let listing = scan_subdirectories(&directory, hidden);
+        out.push((directory, listing));
+    }
+    out
+}
+
+/// `isdir` of every path, normalised, and of the `.git` inside it: what the
+/// catalog asks of a recent, open or frecent folder before it becomes a row.
+/// Asked on all cores, on whichever thread calls it.
+pub fn ask_dirs(paths: &[String]) -> FxHashMap<String, bool> {
+    let mut wanted: Vec<String> = Vec::with_capacity(paths.len() * 2);
+    for path in paths {
+        let folder = normalize(path);
+        if folder.is_empty() {
+            continue;
+        }
+        wanted.push(pyos::join(&folder, ".git"));
+        wanted.push(folder);
+    }
+    wanted.sort_unstable();
+    wanted.dedup();
+    let answers: Vec<bool> = crate::lookups::ask_many(wanted.len(), || {
+        crate::par::map_chunks_from(&wanted, STAT_PARALLEL, |chunk| chunk.iter().map(|path| isdir(path)).collect())
+    });
+    wanted.into_iter().zip(answers).collect()
+}
+
+/// Cache listings read by `prefetch_roots`, as `subdirectories` would have.
+pub fn seed_listings(listings: Vec<(String, Vec<(String, bool)>)>, hidden: bool) {
+    LISTINGS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        for (directory, listing) in listings {
+            cache.entry((directory, hidden)).or_insert_with(|| Rc::new(listing));
+        }
+    });
 }
 
 /// The directory's subdirectories as (name, is_git) pairs, sorted by name.
@@ -255,7 +343,7 @@ pub fn subdirectories(directory: &str, hidden: bool) -> Listing {
 }
 
 fn scan_contents(folder: &str) -> Option<Contents> {
-    let scan = match std::fs::read_dir(if folder.is_empty() { "\0" } else { folder }) {
+    let scan = match crate::lookups::ask(|| std::fs::read_dir(if folder.is_empty() { "\0" } else { folder })) {
         Ok(scan) => scan,
         Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
             // There, but not ours to read.
@@ -297,7 +385,7 @@ pub fn contents(folder: &str) -> Option<Rc<Contents>> {
 /// `open(path, encoding="utf-8", errors="replace").readline(512).strip()`.
 fn read_line(path: &str) -> String {
     use std::io::Read;
-    let Ok(file) = std::fs::File::open(path) else { return String::new() };
+    let Ok(file) = crate::lookups::ask(|| std::fs::File::open(path)) else { return String::new() };
     let mut data = Vec::with_capacity(512);
     // 512 characters are at most 2048 bytes, whatever they decode to.
     if file.take(4096).read_to_end(&mut data).is_err() {
@@ -493,16 +581,66 @@ pub fn root_folders(roots: &[String], hidden: bool) -> Vec<(String, bool)> {
 
 struct CatalogBuilder<'a> {
     owned: &'a SpaceMap,
-    out: Vec<Suggestion>,
-    seen: HashMap<String, usize>,
+    /// Rows are shared once built, but only the builder holds them until
+    /// it is done, so a duplicate can still update the row it repeats.
+    out: Vec<Row>,
+    seen: FxHashMap<String, usize>,
+    /// `isdir` answers asked ahead of time, on all cores.
+    asked: FxHashMap<String, bool>,
 }
 
 impl CatalogBuilder<'_> {
-    fn add(&mut self, path: &str, source: &'static str, detail: &str, is_git: bool) {
+    /// `is_directory(path, false)`, from the answers asked ahead when it can.
+    fn is_directory(&self, path: &str) -> bool {
+        if let Some(found) = CONTENTS.with(|cache| cache.borrow().get(path).map(|c| c.is_some())) {
+            return found;
+        }
+        self.asked.get(path).copied().unwrap_or_else(|| isdir(path))
+    }
+
+    /// Ask, all at once, whatever `ask_dirs` would that is not known yet.
+    fn ask_ahead(&mut self, paths: &[String]) {
+        let asked = &self.asked;
+        let missing: Vec<String> = paths
+            .iter()
+            .filter(|path| {
+                let folder = normalize(path);
+                !folder.is_empty() && !asked.contains_key(&folder)
+            })
+            .cloned()
+            .collect();
+        self.asked.extend(ask_dirs(&missing));
+    }
+
+    /// `git_known` says `is_git` already answers whether `path/.git` is a
+    /// directory, as a root's listing does, so it is not asked twice.
+    fn add(&mut self, path: &str, source: &'static str, detail: &str, is_git: bool, git_known: bool) {
         let folder = normalize(path);
         if folder.is_empty() {
             return;
         }
+        let git_known = git_known && folder == path;
+        self.add_folder(folder, None, source, detail, is_git, git_known);
+    }
+
+    /// A row of a root's listing, whose path is already normal, as `add`
+    /// would make it but without asking again what the listing answered.
+    fn add_listed(&mut self, path: String, is_git: bool) {
+        let name = pyos::basename(&path).to_string();
+        self.add_folder(path, Some(name), SOURCE_ROOT, "", is_git, true);
+    }
+
+    /// `name` is the folder's last component when the caller has it; it is
+    /// `folder_name` unless the folder is the home directory.
+    fn add_folder(
+        &mut self,
+        folder: String,
+        name: Option<String>,
+        source: &'static str,
+        detail: &str,
+        is_git: bool,
+        git_known: bool,
+    ) {
         let (mut source, mut detail) = (source, detail.to_string());
         if let Some(space) = self.owned.get(&folder) {
             // A folder that already has a space is always shown as one,
@@ -511,7 +649,7 @@ impl CatalogBuilder<'_> {
             detail = space.label.clone();
         }
         if let Some(&index) = self.seen.get(&folder) {
-            let existing = &mut self.out[index];
+            let existing = Arc::get_mut(&mut self.out[index]).expect("only the builder holds a row");
             if rank(source) < rank(existing.source) {
                 existing.source = source;
                 if !detail.is_empty() {
@@ -522,10 +660,13 @@ impl CatalogBuilder<'_> {
             }
             return;
         }
-        let is_git = is_git || is_directory(&pyos::join(&folder, ".git"), false);
+        let is_git = is_git || (!git_known && self.is_directory(&pyos::join(&folder, ".git")));
         self.seen.insert(folder.clone(), self.out.len());
-        let name = folder_name(&folder);
-        self.out.push(Suggestion::with(folder, name, source, detail, is_git));
+        let name = match name {
+            Some(name) if !with_home(|home| home == folder) && !name.is_empty() => name,
+            _ => folder_name(&folder),
+        };
+        self.out.push(Arc::new(Suggestion::with(folder, name, source, detail, is_git)));
     }
 }
 
@@ -534,6 +675,7 @@ impl CatalogBuilder<'_> {
 /// Order here is the order shown before anything is typed: what you picked
 /// last, then what is already open, then the frecent and scanned folders.
 /// Once a query exists the score leads and this is only a tie-break.
+#[cfg(test)]
 pub fn build_catalog(
     snapshot: &Value,
     roots: &[String],
@@ -541,38 +683,69 @@ pub fn build_catalog(
     hidden: bool,
     use_zoxide: bool,
 ) -> Vec<Row> {
-    let owned = space_folders(snapshot);
-    build_catalog_with(&owned, roots, recents, hidden, if use_zoxide { Some(zoxide_folders(400)) } else { None })
+    build_catalog_from(
+        snapshot,
+        roots,
+        recents,
+        hidden,
+        if use_zoxide { Some(zoxide_folders(ZOXIDE_LIMIT)) } else { None },
+    )
 }
 
-/// `build_catalog`, with the space map and zoxide's answer already in hand.
+/// How many of zoxide's folders the catalog takes.
+pub const ZOXIDE_LIMIT: usize = 400;
+
+/// `build_catalog`, with zoxide's answer already in hand.
+#[cfg(test)]
+pub fn build_catalog_from(
+    snapshot: &Value,
+    roots: &[String],
+    recents: &[String],
+    hidden: bool,
+    zoxide: Option<Vec<String>>,
+) -> Vec<Row> {
+    build_catalog_with(&space_folders(snapshot), roots, recents, hidden, zoxide, FxHashMap::default())
+}
+
+/// `build_catalog`, with the space map, zoxide's answer and some of the
+/// `ask_dirs` answers already in hand.
 pub fn build_catalog_with(
     owned: &SpaceMap,
     roots: &[String],
     recents: &[String],
     hidden: bool,
     zoxide: Option<Vec<String>>,
+    asked: FxHashMap<String, bool>,
 ) -> Vec<Row> {
-    let mut builder = CatalogBuilder { owned, out: Vec::new(), seen: HashMap::new() };
+    let mut builder = CatalogBuilder { owned, out: Vec::new(), seen: FxHashMap::default(), asked };
+    let mut ahead: Vec<String> = recents.to_vec();
+    ahead.extend(owned.iter().map(|(folder, _)| folder.clone()));
+    ahead.extend(zoxide.iter().flatten().cloned());
+    builder.ask_ahead(&ahead);
     for path in recents {
-        if is_directory(&normalize(path), false) {
-            builder.add(path, SOURCE_RECENT, "", false);
+        if builder.is_directory(&normalize(path)) {
+            builder.add(path, SOURCE_RECENT, "", false, false);
         }
     }
     for (folder, space) in owned.iter() {
-        builder.add(folder, SOURCE_SPACE, &space.label, false);
+        builder.add(folder, SOURCE_SPACE, &space.label, false, false);
     }
     if let Some(zoxide) = zoxide {
         for path in zoxide {
-            if is_directory(&normalize(&path), false) {
-                builder.add(&path, SOURCE_ZOXIDE, "", false);
+            if builder.is_directory(&normalize(&path)) {
+                builder.add(&path, SOURCE_ZOXIDE, "", false, false);
             }
         }
     }
-    for (path, is_git) in root_folders(roots, hidden) {
-        builder.add(&path, SOURCE_ROOT, "", is_git);
+    let rf = root_folders(roots, hidden);
+    for (path, is_git) in rf {
+        if crate::session::is_normal(&path) {
+            builder.add_listed(path, is_git);
+        } else {
+            builder.add(&path, SOURCE_ROOT, "", is_git, true);
+        }
     }
-    builder.out.into_iter().map(Arc::new).collect()
+    builder.out
 }
 
 // -- matching --------------------------------------------------------------

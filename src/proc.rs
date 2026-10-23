@@ -74,17 +74,18 @@ pub fn run(argv: &[String], timeout: f64) -> Result<Output, RunError> {
 
 /// Sleeps until a child has probably exited, or `limit` passes.
 ///
-/// On Linux a pidfd becomes readable the moment the child exits, so the
-/// caller's `try_wait` sees it without delay. Elsewhere, or when pidfds are
-/// unavailable, it naps for a millisecond and lets the caller look again.
-/// Either way the caller's loop decides; this only saves it spinning.
+/// On Linux a pidfd becomes readable the moment the child exits, and on
+/// macOS a kqueue reports it, so the caller's `try_wait` sees it without
+/// delay. Elsewhere, or when neither can be had (a child already gone, say),
+/// it naps for a millisecond and lets the caller look again. Either way the
+/// caller's loop decides; this only saves it spinning.
 struct ExitWatch {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fd: Option<std::os::fd::OwnedFd>,
 }
 
 impl ExitWatch {
-    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+    #[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(unused_variables))]
     fn new(child: &std::process::Child) -> ExitWatch {
         #[cfg(target_os = "linux")]
         {
@@ -93,7 +94,28 @@ impl ExitWatch {
             let fd = if fd >= 0 { Some(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd as i32) }) } else { None };
             ExitWatch { fd }
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        {
+            use std::os::fd::FromRawFd;
+            let queue = unsafe { libc::kqueue() };
+            if queue < 0 {
+                return ExitWatch { fd: None };
+            }
+            let queue = unsafe { std::os::fd::OwnedFd::from_raw_fd(queue) };
+            let change = libc::kevent {
+                ident: child.id() as libc::uintptr_t,
+                filter: libc::EVFILT_PROC,
+                flags: libc::EV_ADD | libc::EV_ONESHOT,
+                fflags: libc::NOTE_EXIT,
+                data: 0,
+                udata: std::ptr::null_mut(),
+            };
+            use std::os::fd::AsRawFd;
+            let added =
+                unsafe { libc::kevent(queue.as_raw_fd(), &change, 1, std::ptr::null_mut(), 0, std::ptr::null()) };
+            ExitWatch { fd: (added == 0).then_some(queue) }
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         {
             ExitWatch {}
         }
@@ -106,6 +128,17 @@ impl ExitWatch {
             let mut poll = libc::pollfd { fd: fd.as_raw_fd(), events: libc::POLLIN, revents: 0 };
             let ms = limit.as_millis().clamp(1, i32::MAX as u128) as i32;
             let ready = unsafe { libc::poll(&mut poll, 1, ms) };
+            if ready >= 0 {
+                return;
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(queue) = &self.fd {
+            use std::os::fd::AsRawFd;
+            let timeout =
+                libc::timespec { tv_sec: limit.as_secs() as libc::time_t, tv_nsec: limit.subsec_nanos() as _ };
+            let mut event: libc::kevent = unsafe { std::mem::zeroed() };
+            let ready = unsafe { libc::kevent(queue.as_raw_fd(), std::ptr::null(), 0, &mut event, 1, &timeout) };
             if ready >= 0 {
                 return;
             }

@@ -27,8 +27,19 @@ where
     R: Send,
     F: Fn(&[T]) -> Vec<R> + Sync,
 {
+    map_chunks_from(items, MIN_PARALLEL, work)
+}
+
+/// `map_chunks`, splitting from `min` items on: lower for work that waits
+/// on the kernel, as a stat does, than for work that only computes.
+pub fn map_chunks_from<T, R, F>(items: &[T], min: usize, work: F) -> Vec<R>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&[T]) -> Vec<R> + Sync,
+{
     let threads = threads();
-    if items.len() < MIN_PARALLEL || threads < 2 {
+    if items.len() < min.max(2) || threads < 2 {
         return work(items);
     }
     let size = items.len().div_ceil(threads);
@@ -43,6 +54,39 @@ where
         }
         out
     })
+}
+
+/// Work started on a thread of its own, to be collected later.
+pub enum Pending<T> {
+    Running(std::thread::JoinHandle<T>),
+    /// No thread could be started, so the work was done in place.
+    Done(T),
+}
+
+impl<T> Pending<T> {
+    pub fn join(self) -> T {
+        match self {
+            Pending::Running(handle) => handle.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+            Pending::Done(value) => value,
+        }
+    }
+}
+
+/// Start `work` beside the caller, or run it now when no thread is to be had.
+pub fn start<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Pending<T> {
+    let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(work)));
+    let theirs = slot.clone();
+    let spawned = std::thread::Builder::new().spawn(move || {
+        let work = theirs.lock().unwrap_or_else(|e| e.into_inner()).take().expect("work taken once");
+        work()
+    });
+    match spawned {
+        Ok(handle) => Pending::Running(handle),
+        Err(_) => {
+            let work = slot.lock().unwrap_or_else(|e| e.into_inner()).take().expect("work taken once");
+            Pending::Done(work())
+        }
+    }
 }
 
 #[cfg(test)]

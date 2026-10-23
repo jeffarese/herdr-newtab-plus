@@ -193,7 +193,7 @@ pub fn isabs(path: &str) -> bool {
 
 /// `os.getcwd()`, or "" when the cwd has gone.
 pub fn getcwd() -> String {
-    std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+    crate::lookups::ask(|| std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default())
 }
 
 fn split(path: &str) -> (String, String) {
@@ -207,15 +207,23 @@ fn split(path: &str) -> (String, String) {
     (head, tail.to_string())
 }
 
-fn is_symlink(path: &str) -> bool {
-    std::fs::symlink_metadata(path).map(|meta| meta.file_type().is_symlink()).unwrap_or(false)
-}
-
 /// `os.path.realpath(path)`: every symlink followed, a missing tail kept as
 /// written rather than an error, as posixpath does it with `strict=False`.
+#[cfg(test)]
 pub fn realpath(path: &str) -> String {
+    realpath_with(path, &mut std::collections::HashSet::new())
+}
+
+/// `realpath`, trusting `real` to hold paths an earlier call found to exist
+/// and not be symlinks, and adding the ones this call finds. Paths that share
+/// a parent then cost one lstat each rather than one per component.
+pub fn realpath_with(path: &str, real: &mut std::collections::HashSet<String>) -> String {
+    crate::lookups::ask(|| realpath_uncounted(path, real))
+}
+
+fn realpath_uncounted(path: &str, real: &mut std::collections::HashSet<String>) -> String {
     let mut seen: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
-    let (resolved, _) = join_realpath(String::new(), path, &mut seen);
+    let (resolved, _) = join_realpath(String::new(), path, &mut seen, real);
     abspath(&resolved)
 }
 
@@ -223,6 +231,7 @@ fn join_realpath(
     mut path: String,
     rest: &str,
     seen: &mut std::collections::HashMap<String, Option<String>>,
+    real: &mut std::collections::HashSet<String>,
 ) -> (String, bool) {
     let mut rest = rest.to_string();
     if isabs(&rest) {
@@ -251,9 +260,21 @@ fn join_realpath(
             continue;
         }
         let newpath = join(&path, &name);
-        if !is_symlink(&newpath) {
+        if real.contains(&newpath) {
             path = newpath;
             continue;
+        }
+        match std::fs::symlink_metadata(&newpath) {
+            Ok(meta) if meta.file_type().is_symlink() => {}
+            Ok(_) => {
+                real.insert(newpath.clone());
+                path = newpath;
+                continue;
+            }
+            Err(_) => {
+                path = newpath;
+                continue;
+            }
         }
         if let Some(known) = seen.get(&newpath) {
             match known {
@@ -273,7 +294,7 @@ fn join_realpath(
                 continue;
             }
         };
-        let (resolved, ok) = join_realpath(path, &target, seen);
+        let (resolved, ok) = join_realpath(path, &target, seen, real);
         path = resolved;
         if !ok {
             return (join(&path, &rest), false);
@@ -288,7 +309,7 @@ pub fn abspath(path: &str) -> String {
     let joined = if is_absolute(path) {
         path.to_string()
     } else {
-        let cwd = std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let cwd = getcwd();
         if cwd.ends_with(is_sep) {
             cwd + path
         } else {

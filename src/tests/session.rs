@@ -5,8 +5,8 @@ use crate::paths;
 use crate::pyjson::Value;
 use crate::pyos;
 use crate::session::{
-    agent_name, clear_resolved, created_ids, focused_cwd, folder_statuses, live_agent_names, next_mode, normalize,
-    resolve_target, resolved, space_folders, spaces, RESOLVED, SMART, SPACE, TAB,
+    agent_name, clear_resolved, created_ids, focused_cwd, folder_statuses, is_normal, live_agent_names, next_mode,
+    normalize, normalize_slow, resolve_target, resolved, space_folders, spaces, RESOLVED, SMART, SPACE, TAB,
 };
 use crate::testutil::*;
 use std::collections::HashSet;
@@ -387,4 +387,103 @@ fn an_empty_path_is_never_cached_as_an_answer() {
     let _t = Resolved::set_up();
     assert_eq!(resolved(""), "");
     assert_eq!(resolved("   "), "");
+}
+
+// -- the shortcuts the Rust build takes, held to the long way round ---------
+
+#[test]
+fn the_normal_path_shortcut_answers_as_the_long_way_does() {
+    let _env = env_lock();
+    let home = pyos::expanduser("~");
+    let cases = [
+        "/",
+        "//",
+        "///",
+        "/a",
+        "/a/",
+        "/a//b",
+        "/a/./b",
+        "/a/../b",
+        "/a/.",
+        "/a/..",
+        "/.",
+        "/..",
+        "/a/.b",
+        "/a/..b",
+        "/a/b.",
+        "/a/b..",
+        "/a b",
+        "/a b ",
+        " /a",
+        "/a\t",
+        "/a\u{3000}",
+        "/$HOME",
+        "/a$",
+        "/a/${HOME}/b",
+        "~",
+        "~/x",
+        "a",
+        "./a",
+        "../a",
+        "",
+        " ",
+        "/a/b/c/d",
+        "/a\u{1c}",
+        "/a\u{85}",
+        "/日本/語",
+    ];
+    for case in cases {
+        assert_eq!(normalize(case), normalize_slow(case), "{case:?}");
+        if is_normal(case) {
+            assert_eq!(normalize_slow(case), case, "{case:?} is not normal");
+        }
+    }
+    assert!(is_normal(&format!("{home}/work/atlas")));
+}
+
+#[test]
+fn resolving_with_a_shared_cache_answers_as_resolving_afresh() {
+    let tree = TempDir::with(&["real/inner/deep", "other"]);
+    let root = tree.path().to_string();
+    symlink(tree.join("real"), tree.join("link")).unwrap();
+    symlink("real/inner", tree.join("relative")).unwrap();
+    symlink("../other", tree.join("real/up")).unwrap();
+    symlink(tree.join("loop-a"), tree.join("loop-b")).unwrap();
+    symlink(tree.join("loop-b"), tree.join("loop-a")).unwrap();
+    symlink(tree.join("nowhere"), tree.join("dangling")).unwrap();
+    let paths: Vec<String> = [
+        "real",
+        "real/inner",
+        "real/inner/deep",
+        "link",
+        "link/inner/deep",
+        "relative",
+        "relative/deep",
+        "real/up",
+        "real/up/x",
+        "link/up",
+        "loop-a",
+        "loop-a/x",
+        "dangling",
+        "dangling/x",
+        "missing/a/b",
+        "real/inner/../inner/deep",
+        "link/../other",
+        "relative/../../other",
+    ]
+    .iter()
+    .map(|p| format!("{root}/{p}"))
+    .collect();
+    let mut shared = HashSet::new();
+    // Twice through, so the second pass answers from a warm cache.
+    for _ in 0..2 {
+        for path in &paths {
+            assert_eq!(pyos::realpath_with(path, &mut shared), pyos::realpath(path), "{path}");
+        }
+    }
+    // A cache warmed in another order answers the same too.
+    let mut reversed = HashSet::new();
+    for path in paths.iter().rev() {
+        assert_eq!(pyos::realpath_with(path, &mut reversed), pyos::realpath(path), "{path}");
+    }
 }

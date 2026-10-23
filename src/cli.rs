@@ -12,6 +12,7 @@ use crate::app::{Choice, Picker};
 use crate::client::{HerdrClient, HerdrError};
 use crate::config::Config;
 use crate::icons;
+use crate::par;
 use crate::paths::{self, Row};
 use crate::pyjson::{self, Map, Value};
 use crate::pyos;
@@ -64,15 +65,32 @@ fn out(text: &str) {
     let _ = stdout.flush();
 }
 
+/// Herdr's snapshot, and the catalog built from it.
+///
+/// zoxide's answer and the roots' listings do not depend on the snapshot, so
+/// they are read on threads of their own while Herdr answers, rather than
+/// after it. An error returns without waiting for them.
 fn catalog(client: &mut HerdrClient, config: &Config, recents: &Recents) -> Result<(Value, Vec<Row>), HerdrError> {
+    let setting = config.zoxide.clone();
+    let zoxide = par::start(move || {
+        let folders = crate::config::zoxide_wanted(&setting, paths::zoxide_installed())
+            .then(|| paths::zoxide_folders(paths::ZOXIDE_LIMIT));
+        let asked = folders.as_deref().map(paths::ask_dirs).unwrap_or_default();
+        (folders, asked)
+    });
+    let recent = recents.folders();
+    let (roots, hidden, ahead) = (config.roots.clone(), config.hidden, recent.clone());
+    let disk = par::start(move || (paths::prefetch_roots(&roots, hidden), paths::ask_dirs(&ahead)));
     let snapshot = client.snapshot()?;
-    let catalog = paths::build_catalog(
-        &snapshot,
-        &config.roots,
-        &recents.folders(),
-        config.hidden,
-        config.wants_zoxide(paths::zoxide_installed()),
-    );
+    let owned = crate::session::space_folders(&snapshot);
+    let open: Vec<String> = owned.iter().map(|(folder, _)| folder.clone()).collect();
+    let open_asked = paths::ask_dirs(&open);
+    let (zoxide, mut asked) = zoxide.join();
+    let (listings, recent_asked) = disk.join();
+    asked.extend(recent_asked);
+    asked.extend(open_asked);
+    paths::seed_listings(listings, config.hidden);
+    let catalog = paths::build_catalog_with(&owned, &config.roots, &recent, config.hidden, zoxide, asked);
     Ok((snapshot, catalog))
 }
 
@@ -390,6 +408,10 @@ pub fn main(args: Vec<String>) -> i32 {
     }
 
     let recents = Recents::new(state_path());
+    // Which agents are installed is a walk of PATH that nothing before the
+    // first frame needs, so it runs beside the snapshot request.
+    let wanted = config.agents.clone();
+    let chips = par::start(move || agents::available(&wanted));
     if config.agent_icons == "auto" {
         icons::prefetch(); // overlaps the snapshot request rather than following it
     }
@@ -412,7 +434,7 @@ pub fn main(args: Vec<String>) -> i32 {
     let mut theme = Theme::new(Some(&config.colors), Some(&selection_background), appearance);
     theme.agent_icons = icons::enabled(config.agent_icons);
 
-    let chips = agents::available(&config.agents);
+    let chips = chips.join();
     let base = focused_cwd(&snapshot).filter(|b| !b.is_empty()).unwrap_or_else(paths::home);
     let mouse = config.mouse;
     let skip_flags = config.skip_permission_flags.clone();
