@@ -9,3 +9,7 @@ __pycache__/
 demo/.frames/
 demo/frame-*.png
 demo/scene-*.png
+
+# Rust build output, and the binary install.sh puts in place.
+/target/
+/bin/
