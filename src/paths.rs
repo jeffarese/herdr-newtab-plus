@@ -579,7 +579,11 @@ pub fn root_folders(roots: &[String], hidden: bool) -> Vec<(String, bool)> {
     out
 }
 
-struct CatalogBuilder<'a> {
+/// The catalog, built in the order it is shown: recents, open spaces,
+/// zoxide, roots. `cli::catalog` builds it step by step so that the root
+/// rows are made while zoxide is still answering; `build_catalog_with` is
+/// the same steps in one go.
+pub struct CatalogBuilder<'a> {
     owned: &'a SpaceMap,
     /// Rows are shared once built, but only the builder holds them until
     /// it is done, so a duplicate can still update the row it repeats.
@@ -589,7 +593,118 @@ struct CatalogBuilder<'a> {
     asked: FxHashMap<String, bool>,
 }
 
-impl CatalogBuilder<'_> {
+/// A root's rows, made ahead of the rows before them in the catalog: all of
+/// a row's work except checking it against those, which needs zoxide's
+/// answer. A listing with a path that is not already normal (a folder named
+/// `$HOME`, say) could normalise onto a sibling, so it keeps the plain
+/// listing and is added row by row, exactly as before.
+pub struct RootRows {
+    rows: Vec<Row>,
+    listed: Option<Vec<(String, bool)>>,
+}
+
+impl<'a> CatalogBuilder<'a> {
+    pub fn new(owned: &'a SpaceMap, asked: FxHashMap<String, bool>) -> CatalogBuilder<'a> {
+        CatalogBuilder { owned, out: Vec::new(), seen: FxHashMap::default(), asked }
+    }
+
+    /// Folders picked recently, then every folder that has a space.
+    pub fn add_recents_and_spaces(&mut self, recents: &[String]) {
+        let mut ahead: Vec<String> = recents.to_vec();
+        ahead.extend(self.owned.iter().map(|(folder, _)| folder.clone()));
+        self.ask_ahead(&ahead);
+        for path in recents {
+            if self.is_directory(&normalize(path)) {
+                self.add(path, SOURCE_RECENT, "", false, false);
+            }
+        }
+        for (folder, space) in self.owned.iter() {
+            self.add(folder, SOURCE_SPACE, &space.label, false, false);
+        }
+    }
+
+    /// zoxide's folders, with the `ask_dirs` answers asked alongside them.
+    pub fn add_zoxide(&mut self, zoxide: Option<Vec<String>>, asked: FxHashMap<String, bool>) {
+        self.asked.extend(asked);
+        let Some(zoxide) = zoxide else { return };
+        self.ask_ahead(&zoxide);
+        for path in zoxide {
+            if self.is_directory(&normalize(&path)) {
+                self.add(&path, SOURCE_ZOXIDE, "", false, false);
+            }
+        }
+    }
+
+    /// Every child of the roots, made as rows the way `add_listed` would.
+    pub fn prepare_roots(&self, roots: &[String], hidden: bool) -> RootRows {
+        let listed = root_folders(roots, hidden);
+        if !listed.iter().all(|(path, _)| crate::session::is_normal(path)) {
+            return RootRows { rows: Vec::new(), listed: Some(listed) };
+        }
+        let rows = listed
+            .into_iter()
+            .map(|(path, is_git)| {
+                let (source, detail) = match self.owned.get(&path) {
+                    Some(space) => (SOURCE_SPACE, space.label.clone()),
+                    None => (SOURCE_ROOT, String::new()),
+                };
+                let name = pyos::basename(&path);
+                let name = if name.is_empty() || with_home(|home| home == path) {
+                    folder_name(&path)
+                } else {
+                    name.to_string()
+                };
+                Arc::new(Suggestion::with(path, name, source, detail, is_git))
+            })
+            .collect();
+        RootRows { rows, listed: None }
+    }
+
+    /// `prepare_roots`, always the row-by-row way, to hold the other to.
+    #[cfg(test)]
+    pub fn prepare_roots_row_by_row(&self, roots: &[String], hidden: bool) -> RootRows {
+        RootRows { rows: Vec::new(), listed: Some(root_folders(roots, hidden)) }
+    }
+
+    /// The root rows, last. Their paths are distinct (one listing per root,
+    /// one name per entry), so each is checked only against the rows before
+    /// it, and nothing is added after them.
+    pub fn add_roots(&mut self, prepared: RootRows) {
+        if let Some(listed) = prepared.listed {
+            for (path, is_git) in listed {
+                if crate::session::is_normal(&path) {
+                    self.add_listed(path, is_git);
+                } else {
+                    self.add(&path, SOURCE_ROOT, "", is_git, true);
+                }
+            }
+            return;
+        }
+        for row in prepared.rows {
+            match self.seen.get(&row.path) {
+                Some(&index) => self.merge(index, row.source, &row.detail, row.is_git),
+                None => self.out.push(row),
+            }
+        }
+    }
+
+    pub fn finish(self) -> Vec<Row> {
+        self.out
+    }
+
+    /// A folder seen again: the better source wins, and a checkout stays one.
+    fn merge(&mut self, index: usize, source: &'static str, detail: &str, is_git: bool) {
+        let existing = Arc::get_mut(&mut self.out[index]).expect("only the builder holds a row");
+        if rank(source) < rank(existing.source) {
+            existing.source = source;
+            if !detail.is_empty() {
+                existing.detail = detail.to_string();
+            }
+        } else if is_git && !existing.is_git {
+            existing.is_git = true;
+        }
+    }
+
     /// `is_directory(path, false)`, from the answers asked ahead when it can.
     fn is_directory(&self, path: &str) -> bool {
         if let Some(found) = CONTENTS.with(|cache| cache.borrow().get(path).map(|c| c.is_some())) {
@@ -649,15 +764,7 @@ impl CatalogBuilder<'_> {
             detail = space.label.clone();
         }
         if let Some(&index) = self.seen.get(&folder) {
-            let existing = Arc::get_mut(&mut self.out[index]).expect("only the builder holds a row");
-            if rank(source) < rank(existing.source) {
-                existing.source = source;
-                if !detail.is_empty() {
-                    existing.detail = detail;
-                }
-            } else if is_git && !existing.is_git {
-                existing.is_git = true;
-            }
+            self.merge(index, source, &detail, is_git);
             return;
         }
         let is_git = is_git || (!git_known && self.is_directory(&pyos::join(&folder, ".git")));
@@ -708,7 +815,8 @@ pub fn build_catalog_from(
 }
 
 /// `build_catalog`, with the space map, zoxide's answer and some of the
-/// `ask_dirs` answers already in hand.
+/// `ask_dirs` answers already in hand: the steps `cli::catalog` takes.
+#[cfg(test)]
 pub fn build_catalog_with(
     owned: &SpaceMap,
     roots: &[String],
@@ -717,35 +825,12 @@ pub fn build_catalog_with(
     zoxide: Option<Vec<String>>,
     asked: FxHashMap<String, bool>,
 ) -> Vec<Row> {
-    let mut builder = CatalogBuilder { owned, out: Vec::new(), seen: FxHashMap::default(), asked };
-    let mut ahead: Vec<String> = recents.to_vec();
-    ahead.extend(owned.iter().map(|(folder, _)| folder.clone()));
-    ahead.extend(zoxide.iter().flatten().cloned());
-    builder.ask_ahead(&ahead);
-    for path in recents {
-        if builder.is_directory(&normalize(path)) {
-            builder.add(path, SOURCE_RECENT, "", false, false);
-        }
-    }
-    for (folder, space) in owned.iter() {
-        builder.add(folder, SOURCE_SPACE, &space.label, false, false);
-    }
-    if let Some(zoxide) = zoxide {
-        for path in zoxide {
-            if builder.is_directory(&normalize(&path)) {
-                builder.add(&path, SOURCE_ZOXIDE, "", false, false);
-            }
-        }
-    }
-    let rf = root_folders(roots, hidden);
-    for (path, is_git) in rf {
-        if crate::session::is_normal(&path) {
-            builder.add_listed(path, is_git);
-        } else {
-            builder.add(&path, SOURCE_ROOT, "", is_git, true);
-        }
-    }
-    builder.out
+    let mut builder = CatalogBuilder::new(owned, asked);
+    builder.add_recents_and_spaces(recents);
+    let prepared = builder.prepare_roots(roots, hidden);
+    builder.add_zoxide(zoxide, FxHashMap::default());
+    builder.add_roots(prepared);
+    builder.finish()
 }
 
 // -- matching --------------------------------------------------------------

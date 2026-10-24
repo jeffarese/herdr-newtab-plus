@@ -262,6 +262,71 @@ fn a_missing_root_is_ignored() {
     assert!(catalog.is_empty());
 }
 
+/// The root rows made while zoxide is still answering must make the catalog
+/// adding the listing row by row makes: the same rows in the same order, each
+/// duplicate of an earlier source merged into it, the home folder named for
+/// what it is. A folder whose name normalises onto a sibling makes the
+/// listing fall back to the row-by-row way.
+#[test]
+fn root_rows_made_ahead_make_the_catalog_row_by_row_does() {
+    let _lock = env_lock();
+    let mut env = EnvVars::new();
+    env.set("NTP_SIBLING", "beta");
+    let tree = TempDir::with(&[
+        "root/alpha/.git",
+        "root/beta",
+        "root/gamma/.git",
+        "root/me",
+        "root/open/.git",
+        "root/zed",
+        "other",
+    ]);
+    let previous_home = paths::home();
+    paths::set_home(&tree.join("root/me"));
+    let root = vec![tree.join("root")];
+    let snap = snapshot(vec![pane("w1:p1", &tree.join("root/open"), "w1")], None);
+    let owned = crate::session::space_folders(&snap);
+    let recents = vec![tree.join("root/alpha"), tree.join("other")];
+    let zoxide = Some(vec![tree.join("root/gamma"), tree.join("other"), tree.join("root/open")]);
+    let build = |ahead: bool| {
+        paths::clear_cache();
+        let mut builder = paths::CatalogBuilder::new(&owned, Default::default());
+        builder.add_recents_and_spaces(&recents);
+        let prepared =
+            if ahead { builder.prepare_roots(&root, false) } else { builder.prepare_roots_row_by_row(&root, false) };
+        builder.add_zoxide(zoxide.clone(), Default::default());
+        builder.add_roots(prepared);
+        let rows: Vec<(String, String, &str, String, bool)> = builder
+            .finish()
+            .iter()
+            .map(|row| (pyos_rel(&row.path, tree.path()), row.name.clone(), row.source, row.detail.clone(), row.is_git))
+            .collect();
+        rows
+    };
+    let ahead = build(true);
+    assert_eq!(ahead, build(false));
+    let names: Vec<(&str, &str)> = ahead.iter().map(|row| (row.1.as_str(), row.2)).collect();
+    assert_eq!(
+        names[..4],
+        [("alpha", SOURCE_RECENT), ("other", SOURCE_RECENT), ("open", SOURCE_SPACE), ("gamma", "zoxide")]
+    );
+    assert_eq!(ahead.len(), 7, "{ahead:?}");
+    assert!(ahead.iter().any(|row| row.0 == "root/me" && row.1 == folder_name(&tree.join("root/me"))));
+
+    std::fs::create_dir(tree.join("root/$NTP_SIBLING")).unwrap();
+    let fallback = build(true);
+    assert_eq!(fallback, build(false));
+    assert_eq!(fallback.iter().filter(|row| row.0 == "root/beta").count(), 1, "{fallback:?}");
+
+    paths::set_home(&previous_home);
+    paths::clear_cache();
+}
+
+/// `path` written relative to `base`, for comparing rows across trees.
+fn pyos_rel(path: &str, base: &str) -> String {
+    path.strip_prefix(base).map(|rest| rest.trim_start_matches('/').to_string()).unwrap_or_else(|| path.to_string())
+}
+
 // -- FilterTest ---------------------------------------------------------------
 
 fn filter_fixture() -> Vec<Row> {

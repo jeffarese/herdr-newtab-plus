@@ -84,14 +84,19 @@ fn catalog(client: &mut HerdrClient, config: &Config, recents: &Recents) -> Resu
     let snapshot = client.snapshot()?;
     let owned = crate::session::space_folders(&snapshot);
     let open: Vec<String> = owned.iter().map(|(folder, _)| folder.clone()).collect();
-    let open_asked = paths::ask_dirs(&open);
-    let (zoxide, mut asked) = zoxide.join();
+    let mut asked = paths::ask_dirs(&open);
     let (listings, recent_asked) = disk.join();
     asked.extend(recent_asked);
-    asked.extend(open_asked);
     paths::seed_listings(listings, config.hidden);
-    let catalog = paths::build_catalog_with(&owned, &config.roots, &recent, config.hidden, zoxide, asked);
-    Ok((snapshot, catalog))
+    // Everything that does not need zoxide's answer is built while it is
+    // still coming: the rows before zoxide's, and the roots' rows after them.
+    let mut builder = paths::CatalogBuilder::new(&owned, asked);
+    builder.add_recents_and_spaces(&recent);
+    let roots = builder.prepare_roots(&config.roots, config.hidden);
+    let (zoxide, zoxide_asked) = zoxide.join();
+    builder.add_zoxide(zoxide, zoxide_asked);
+    builder.add_roots(roots);
+    Ok((snapshot, builder.finish()))
 }
 
 /// Which offered agents ctrl+Y can actually arm, and with what.
