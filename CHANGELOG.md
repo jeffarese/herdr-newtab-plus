@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+- The picker is a native binary, written in Rust, and no longer needs Python.
+  It is the same picker: same screens, keys, config and state files, held to
+  the Python release by a parity suite that drives both on a pseudo-terminal
+  and compares every screen, Herdr request and state file in 106 scenarios.
+- Installing runs a build step that downloads the release binary for your
+  platform (macOS or Linux, x86_64 or ARM), checks it against the release's
+  `SHA256SUMS` and the version it reports, and builds from source with `cargo`
+  when it cannot (Rust 1.88+; `HERDR_NEWTAB_PLUS_BUILD=source` always does).
+  `herdr plugin update herdr-newtab-plus` upgrades a 0.1 install.
+- Much faster. With 4,000 folders, 200 panes and zoxide, the first frame
+  shows in about 14 ms instead of 90, a keystroke takes under a millisecond
+  instead of 35, and a session uses an eighth of the CPU and half the memory.
+  zoxide, the roots, the recents and the agents on PATH are read while Herdr
+  answers the snapshot request rather than after it.
 
 - The right-hand third of the popup previews the folder under the cursor, the
   way herdr-bar previews a pane: its name and path, its branch when it is a
@@ -60,12 +75,11 @@
   the logos, the statuses and the chip row following the selection. The
   recorder draws the logos with the icon font when the machine has it.
 
-- `scripts/record_demo.py` films the README's GIF. It drives the real picker
-  through the same key handlers a terminal would, against the fixture catalog
-  and a virtual filesystem, so the completion completes the same directories on
-  any machine and no fixture folder reads as missing. Pillow and ffmpeg are
-  needed to re-record and nothing else; the plugin itself still has no
-  dependencies.
+- `cargo run --release --features demo --example record_demo` films the
+  README's GIF: the real binary on a pseudo-terminal against a fake Herdr and a
+  synthetic home, typed at in real time, so it shows exactly what the plugin
+  draws. ffmpeg is needed to re-record; the `demo` feature is never part of
+  the plugin build.
 - The fixture folders the demo, the benchmark and the tests all share are
   neutral names rather than the author's own projects.
 
@@ -131,10 +145,12 @@
 - A `"space"` target now carries the name of the space it would make, so the
   line above the hints reads `→ new space alpha` rather than `→ new space` when
   the answer was insisted on rather than inferred.
-- `scripts/bench.py` measures the picker against a synthetic catalog and
-  session and scores it out of 100. Timings are scored but never gated; bytes
-  on the wire and questions asked of the filesystem are the same on every
-  machine, so `--check` fails on those and CI runs it on every push.
+- `cargo run --release --example bench` times the binary as a black box on a
+  pseudo-terminal against a fake Herdr, in three workloads up to 4,000
+  folders, and compares the result with a saved run (`--compare python` is
+  the Python release). Bytes on the wire and questions asked of the
+  filesystem per frame are the same on every machine, so the tests hold them
+  fixed on every push.
 - A frame no longer re-derives the session snapshot behind every keystroke.
   Following a symlink is remembered for the life of the popup, which the rescan
   key clears along with the directory listings. A frame asked the filesystem 10

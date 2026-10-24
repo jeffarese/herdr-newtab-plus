@@ -1,0 +1,78 @@
+{
+  "cmd": [
+    "target/release/herdr-newtab-plus"
+  ],
+  "machine": {
+    "bench": "rust",
+    "cpus": 12,
+    "machine": "arm64",
+    "platform": "darwin"
+  },
+  "results": {
+    "large": {
+      "agent_p50_ms": 3.806667,
+      "bytes_p50": 23520,
+      "cpu_p50_ms": 53.888,
+      "create_exit_p50_ms": 4.466458,
+      "create_p50_ms": 0.146208,
+      "exit_p50_ms": 63.097249999999995,
+      "first_frame_p50_ms": 13.657292,
+      "first_frame_p90_ms": 14.566749999999999,
+      "folders": 4000,
+      "herdr_calls_p50": 1,
+      "keystroke_p50_ms": 0.840833,
+      "keystroke_p99_ms": 3.146875,
+      "list_p50_ms": 15.048,
+      "nav_p50_ms": 0.228958,
+      "nav_p99_ms": 0.33608299999999997,
+      "panes": 200,
+      "path_max_p50_ms": 2.441417,
+      "path_p50_ms": 0.8009160000000001,
+      "peak_p50_kb": 12032
+    },
+    "medium": {
+      "agent_p50_ms": 3.336125,
+      "bytes_p50": 23519,
+      "cpu_p50_ms": 22.325999999999997,
+      "create_exit_p50_ms": 3.8825830000000003,
+      "create_p50_ms": 0.143292,
+      "exit_p50_ms": 62.550125,
+      "first_frame_p50_ms": 11.321584000000001,
+      "first_frame_p90_ms": 11.669083,
+      "folders": 400,
+      "herdr_calls_p50": 1,
+      "keystroke_p50_ms": 0.25816700000000004,
+      "keystroke_p99_ms": 0.755708,
+      "list_p50_ms": 9.802041,
+      "nav_p50_ms": 0.246209,
+      "nav_p99_ms": 5.348000000000001,
+      "panes": 32,
+      "path_max_p50_ms": 0.470334,
+      "path_p50_ms": 0.22941699999999998,
+      "peak_p50_kb": 4752
+    },
+    "small": {
+      "agent_p50_ms": 3.575167,
+      "bytes_p50": 21653,
+      "cpu_p50_ms": 11.004,
+      "create_exit_p50_ms": 3.78025,
+      "create_p50_ms": 0.16229100000000002,
+      "exit_p50_ms": 62.453375,
+      "first_frame_p50_ms": 3.357917,
+      "first_frame_p90_ms": 4.70475,
+      "folders": 12,
+      "herdr_calls_p50": 1,
+      "keystroke_p50_ms": 0.171583,
+      "keystroke_p99_ms": 0.761542,
+      "list_p50_ms": 2.44825,
+      "nav_p50_ms": 0.242083,
+      "nav_p99_ms": 1.325791,
+      "panes": 2,
+      "path_max_p50_ms": 0.282209,
+      "path_p50_ms": 0.167291,
+      "peak_p50_kb": 3408
+    },
+    "version_p50_ms": 1.885958
+  },
+  "runs": 24
+}

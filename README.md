@@ -1,18 +1,42 @@
-# herdr-newtab-plus
+# herdr-newtab-plus — pick a folder, pick an agent, press Enter
 
 [![ci](https://github.com/jeffarese/herdr-newtab-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffarese/herdr-newtab-plus/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/jeffarese/herdr-newtab-plus)](https://github.com/jeffarese/herdr-newtab-plus/releases/latest)
 
-A new tab that asks two questions first: **which folder**, and **which agent**.
-
-Herdr's built-in new tab opens where you already are. This replaces it with a
-popup that completes real paths as you type, remembers the folders you actually
-work in, and can start an agent in the new tab for you.
+**A [Herdr](https://herdr.dev) plugin that replaces the new tab with a folder
+picker.** Press your new-tab key, type a few letters of a project (or a path,
+completed against the real filesystem), pick an agent, and Enter opens the tab
+there with the agent already starting. A folder that already has a space gets
+a tab in it; any other folder gets a space of its own.
 
 ![herdr-newtab-plus: pick a folder, pick an agent, press enter](demo/herdr-newtab-plus.gif)
 
-Before you type anything, it is the folders you actually use — the ones you
-picked recently, the ones that already have a space open, badged with its name
-and with the status of any agent already working in it:
+- **the folders you use, before you type** — recent picks first, then folders
+  that already have a space open (badged with its name and the status of any
+  agent working there), then zoxide's frecency list, then your project roots.
+- **real path completion** — type `/`, `~` or `.` and the list becomes the real
+  subdirectories of what you named, prefix matches first, with a dimmed
+  completion after the cursor that `⇥` accepts.
+- **tab or space, decided for you** — a folder has a space when a pane in that
+  space is standing in it, symlinks followed. `^T` switches between *smart*,
+  *always a tab* and *always a space*, and stays where you leave it.
+- **starts the agent** — a plain shell, or claude, codex, opencode, pi or any
+  other agent Herdr can start that is installed. Each folder remembers the one
+  you last opened it with. `^Y` starts it with its permission prompts off, for
+  this tab only.
+- **logos and live status** — every agent in its vendor's colour, with its
+  logo when the Herdr Agent Icons Max font is installed, and Herdr's own status
+  glyphs: `◉` needs you, `◐` working, `●` done, `✓` idle.
+- **a preview of the folder** — its branch, the space it already has, the
+  agents in it and what each is doing, and what is inside it.
+- **one small native binary** — written in Rust, with no runtime to install.
+  Herdr downloads the prebuilt binary for your platform when it installs the
+  plugin. With 4,000 folders to offer, the first frame is on screen in about
+  14 ms and a keystroke takes under a millisecond:
+  [6× and 40× faster](#performance) than the Python release it replaces.
+
+Before you type anything, the list is the folders you use, with what Enter will
+do spelled out above the hints:
 
 ```
  ❯  folder — type a name, or a path to complete it
@@ -21,9 +45,9 @@ and with the status of any agent already working in it:
    herdr-bar         ~/workspace                                                           codex · ◉ Herdr
    herdr-newtab-plus ~/workspace                                                           claude · recent
    mobile-client     ~/workspace                                                                   frecent
-   notes             ~/workspace                                                                       git
    classifier        ~/workspace
    log-sink          ~/workspace                                                                       git
+   notes             ~/workspace                                                                       git
    webhook-relay     ~/workspace                                                                       git
  ─────────────────────────────────────────────────────────────────────────────────────────────────────────
    agent  shell   claude   codex   opencode   pi
@@ -32,36 +56,10 @@ and with the status of any agent already working in it:
    ⇥ agent   → complete   ↑↓ folder   ^T smart   ^Y skip perms   ⏎ create   esc close          ? help  1/8
 ```
 
-That is the plain-text view. In a terminal the selected agent and the create
-mode it is on are drawn as pills, every agent is in its vendor's colour, and
-with the [icon font](#agent-logos) installed each folder leads with the logo of
-the agent it was last opened with, as in the GIF.
-
-The popup is a fixed 110×30 cells rather than a share of the terminal: the rows
-are a fixed width, so scaling with the monitor only ever bought empty columns.
-The size is set by the help panel rather than by the picker — the panel is a page
-about what the keys and the create modes do, and a page you have to read in
-halves is a page nobody reads.
-
-The list is capped at ten suggestions however tall the popup is, because the
-folder you want is one you recognise in the first few and the counter on the
-right says how many more there are. The rows past the cap stay empty rather than
-becoming more folders to scan.
-
-The line above the hints always says what Enter is about to do, because the
-plugin decides between a tab and a whole new space for you:
-
-- the folder already has a space open → **a new tab in that space**
-- it does not → **a new space rooted at that folder**
-
-So one keybinding covers both, and the sidebar keeps one space per project
-instead of accumulating duplicates.
-
-`^T` is there for when you disagree: it moves the switch at the end of that line
-between letting the plugin decide, always a tab, and always a new space. The
-line under it says what the position you are on means, in words, all the time —
-and where you leave it is remembered between opens, so it is a preference you
-set once rather than a config file you go and edit.
+That is the plain-text view, with the folder preview hidden. In a terminal the
+selected agent and create mode are drawn as pills, every agent is in its
+vendor's colour, and with the [icon font](#agent-logos) each folder leads with
+the logo of the agent it was last opened with, as in the GIF.
 
 ## Install
 
@@ -69,22 +67,21 @@ set once rather than a config file you go and edit.
 herdr plugin install jeffarese/herdr-newtab-plus
 ```
 
-Or, for local development:
+Requires Herdr 0.7.4+ (session-modal popup panes) on macOS or Linux, x86_64 or
+ARM. Installing runs the plugin's build step, which downloads the release
+binary for your platform and checks it against the release's `SHA256SUMS` and
+the version it reports. If that fails, it builds from source with `cargo`
+instead (Rust 1.88+). Set `HERDR_NEWTAB_PLUS_BUILD=source` to always build
+from source.
 
-```bash
-git clone https://github.com/jeffarese/herdr-newtab-plus
-herdr plugin link ./herdr-newtab-plus
-```
+Then open it with `herdr plugin action invoke herdr-newtab-plus.open`, or bind
+it to a key (below). If something looks wrong, the binary diagnoses its own
+environment: run `bin/herdr-newtab-plus --doctor` from the plugin's folder.
 
-Needs Herdr 0.7.4+ (session-modal popup panes) and Python 3.9+. No third-party
-packages, no build step.
-
-Check it can see everything it needs:
-
-```bash
-herdr plugin action invoke herdr-newtab-plus.open   # open it
-python3 run.py --doctor                             # or diagnose it
-```
+**Upgrading from 0.1.** 0.1 was a Python script; 0.2 is the same picker as a
+native binary, with the same config, state and keys. `herdr plugin update
+herdr-newtab-plus` reinstalls it, which runs the build step. Python is no
+longer needed.
 
 ## Replacing the built-in new tab
 
@@ -103,15 +100,32 @@ command = "herdr-newtab-plus.open"
 description = "new tab"
 ```
 
-Then `herdr server reload-config`.
-
-If you would rather keep both, leave `new_tab` alone and bind the plugin to a
-different key — nothing here depends on owning the original one.
+Then `herdr server reload-config`. To keep both, leave `new_tab` alone and bind
+the plugin to a different key; nothing here depends on owning the original one.
 
 ## Using it
 
-`?` gives the whole popup over to what everything on screen does, and marks which
-of the three positions the create toggle is on:
+| key | what it does |
+| --- | --- |
+| type | filters folders; a `/`, `~` or `.` switches to completing real paths |
+| `⇥` | accepts the completion while one is showing, otherwise moves the agent |
+| `⇧⇥` | always moves the agent |
+| `→` | fills the input with the highlighted folder, ready to go a level deeper |
+| `↑` `↓` | move through the folders |
+| `⏎` | create |
+| `esc` | close |
+| `ctrl+w` | delete back one path segment |
+| `ctrl+u` | clear |
+| `ctrl+r` | rescan the filesystem |
+| `ctrl+t` | where Enter lands: decide for me, always a tab, always a new space |
+| `ctrl+o` | show or hide the folder preview |
+| `ctrl+y` | start the agent with its permission prompts off |
+| `?` `F1` | the help panel: `?` while the input is empty, `F1` always |
+| click | first click selects, second creates; click an agent to pick it |
+
+The line above the hints always says what Enter is about to do. `?` gives the
+whole popup over to what everything on screen does, and marks the create mode
+you are on:
 
 ```
   what this popup does                                                                    ? or esc  close
@@ -144,48 +158,9 @@ of the three positions the create toggle is on:
    ⏎     create it                               esc   give up and close the popup
 ```
 
-The prose is wrapped rather than written to fit, so a narrower popup says the
-same thing in more lines instead of a shorter, vaguer version of it.
-
-Anything at all closes it again. A folder can legitimately have a `?` in its
-name, so `?` only opens the panel while the input is empty — `F1` works whatever
-is in there, and the corner of the footer says which of the two is live.
-
-| key | what it does |
-| --- | --- |
-| type | filters folders; a `/`, `~` or `.` switches to completing real paths |
-| `⇥` | completes the path while there is a completion showing, otherwise moves the agent |
-| `⇧⇥` | always moves the agent |
-| `→` | fills the input with the highlighted folder, ready to go a level deeper |
-| `↑` `↓` | move through the folders |
-| `⏎` | create |
-| `esc` | cancel |
-| `ctrl+w` | delete back one path segment |
-| `ctrl+u` | clear |
-| `ctrl+r` | rescan the filesystem |
-| `ctrl+t` | where Enter lands: decide for me, always a tab, always a new space |
-| `ctrl+o` | show or hide the folder preview |
-| `?` `F1` | the panel above — `?` while the input is empty, `F1` always |
-| `ctrl+y` | start the agent with its permission prompts off |
-| click | first click selects, second creates; click an agent to pick it |
-
-The completion showing after the cursor is the picker's guess, drawn dimmer than
-what you typed. `⇥` only completes when that guess is on screen — otherwise it
-moves along to the agent row, so Tab always does the next useful thing and you
-can always see which.
-
-### The preview
-
-The right-hand third of the popup is the folder under the cursor: its name and
-path, the branch it is on when it is a checkout, the space it already has, every
-agent standing in it with what that agent is doing, and what is inside it,
-folders first. It follows the selection as you move, and it reads the folder
-once — that same read is how the picker knows the folder exists, so the preview
-costs the filesystem nothing the picker was not already asking.
-
-It shows by itself on a popup wide enough to spare the column, which the
-shipped one is. `ctrl+o` hides it, or brings it up on a narrower popup, and
-`"preview": false` in the config starts it hidden.
+A folder can have a `?` in its name, so `?` only opens the panel while the
+input is empty. `F1` works whatever is typed, and the corner of the footer says
+which of the two is live.
 
 ### Where the folders come from
 
@@ -194,71 +169,92 @@ Before you type anything, the list is, in order:
 1. folders you picked recently
 2. folders that already have a space open, badged with the space's name
 3. zoxide's frecency list, if you have zoxide
-4. every immediate child of your configured roots, `git` badged where it applies
+4. every immediate child of your configured roots, badged `git` where it applies
 
-A folder an agent is already standing in says so before its badge, in the glyphs
-and colours of Herdr's own sidebar — and of herdr-bar's: `◉` needs you, `◐`
-working, `●` done, `✓` idle. With several agents in one folder, the one that
-wants you first wins. A folder you have opened with an agent before names that
-agent too, in its vendor's colour — or, with the icon font, leads its row with
-the agent's logo instead.
+A folder an agent is standing in shows that agent's status before its badge,
+in the glyphs and colours of Herdr's sidebar (and herdr-bar's). With several
+agents in one folder, the one that wants you first wins. A folder you have
+opened with an agent before names that agent too, in its vendor's colour, or
+leads its row with the agent's logo when the icon font is installed.
 
-Type a path — anything with a `/`, or starting with `~` or `.` — and the list
+The list is capped at ten folders: the one you want is one you recognise in the
+first few, and the counter in the corner says how many more there are.
+
+Type a path (anything with a `/`, or starting with `~` or `.`) and the list
 switches to the real subdirectories of what you named, prefix matches first. A
 trailing `/` offers the folder itself as the top row and its children below, so
 you can drill in and still pick the parent.
 
 ### Tab, or a space of its own
 
-`^T` moves the switch at the end of the line above the hints —
-`smart   tab   space`, with a pill on the position it is in — and the line under
-it spells that position out. The footer names it too, and `?` explains all three:
+Herdr does not record a folder on a space; only panes carry a working
+directory. So the rule is exact rather than a guess: a folder has a space when
+some pane in that space is standing in it.
 
-| | line above the hints | what Enter does |
+| `^T` position | line above the hints | what Enter does |
 | --- | --- | --- |
-| `smart` | `→ new tab in Atlas` | reuses the space standing in that folder, otherwise a new one |
-| `tab` | `→ new tab in Atlas` | always a tab — in the folder's own space when it has one, in the focused space when it does not |
+| `smart` | `→ new tab in Atlas` | a tab in the space that folder already has, otherwise a new space |
+| `tab` | `→ new tab in Atlas` | always a tab: in the folder's own space when it has one, in the focused space otherwise |
 | `space` | `→ new space atlas` | always a new space, duplicate or not |
 
-Three positions rather than two, because the automatic decision is the one worth
-being able to get back to; a two-way switch would strand you on an override with
-no way home that was not a config file. All three are always on screen, so the
-two you are not on are never something you have to know about. A popup too
-narrow for the switch badges the overrides instead — `[tab]`, `[space]` — since
-then the sentence is no longer the whole story.
-
-Where you leave it is written to the state directory next to the recent folders,
-so it survives the popup closing, and Herdr restarting. Cancelling with `esc`
-abandons the pick but keeps the setting: a toggle that quietly reverted when you
-changed your mind about the folder would be one you could not trust.
-
-Unlike the agent, it is one setting for the whole picker rather than one per
-folder — it is a preference about how you like new tabs to land, and it should be
-readable the moment the popup opens rather than discovered by selecting the
-folder that happens to carry it. `create` in the config is the starting point for
-a machine that has never touched the key.
+One key covers both, and the sidebar keeps one space per project instead of
+collecting duplicates. The position you leave `^T` on is saved next to your
+recent folders, so it survives the popup closing and Herdr restarting. `esc`
+abandons the pick but keeps the setting. `create` in the config is where a
+machine that has never pressed `^T` starts.
 
 ### Agents
 
 The agent row offers a plain shell plus every agent Herdr can start that is
-actually installed on this machine. The pick is optional; `shell` is a normal
-new tab.
+installed on this machine. The tab is created while you are still looking at
+the last frame; the agent starts in the background, so the popup closes the
+moment the tab exists rather than waiting for the agent to boot. It is named
+after the folder, so `herdr agent focus my-project` works afterwards.
 
-The agent starts in the background, so the popup closes the moment the tab
-exists rather than waiting for the agent to boot. It gets a name derived from
-the folder, so `herdr agent focus my-project` works afterwards. Each folder
-remembers the agent you last opened it with and preselects it, and its row shows
-which one it is, so moving through the list tells you what Enter will start
-before the chip row moves to it.
+### Starting without permission prompts
+
+`ctrl+y` arms the selected agent to start with its approval prompts off: what
+you want for a tab you intend to walk away from. Armed, the chip gains a `!`,
+the line above the hints reads `codex (skip permissions)`, and both turn
+yellow:
+
+```
+   agent  shell   claude   codex!   opencode   pi
+   → new tab in Atlas  ·  codex (skip permissions)                                    smart   tab   space
+     smart — a tab when that folder already has a space open, a new space when it does not
+   ⇥ agent   → complete   ↑↓ folder   ^T smart   ^Y prompts off   ⏎ create   esc close         ? help  1/8
+```
+
+Every CLI spells this differently, so the flags are a table of what has been
+checked rather than a guess:
+
+| agent | argument |
+| --- | --- |
+| `claude` | `--dangerously-skip-permissions` |
+| `codex` | `--dangerously-bypass-approvals-and-sandbox` |
+
+On any other agent `ctrl+y` refuses and says so. Teach it one with
+`skip_permission_flags` in the config; the arguments are passed to the agent
+through `herdr agent start ... -- <args>`, untouched. Unlike the agent, this is
+never remembered per folder: it is a decision about the tab you are opening
+now.
+
+### The preview
+
+The right-hand third of the popup is the folder under the cursor: its name and
+path, its branch when it is a checkout, the space it already has, every agent
+standing in it with what that agent is doing, and what is inside it, folders
+first. It shows by itself on a popup wide enough to spare the column, which the
+shipped one is. `ctrl+o` hides it, or brings it up on a narrower popup.
 
 ### Agent logos
 
-Each agent is drawn in its vendor's colour — the same table herdr-bar uses, so an
-agent looks the same in both popups. With the **Herdr Agent Icons Max** font
-from [herdr-radar](https://github.com/hhdebb/herdr-radar) (MIT; the marks belong
-to their owners), the chips and the folder rows lead with the vendor's logo as
-well, as in the GIF. If herdr-bar or herdr-radar already shows logos in your
-terminal, there is nothing to do. Otherwise:
+Each agent is drawn in its vendor's colour, from the same table herdr-bar
+uses. With the **Herdr Agent Icons Max** font from
+[herdr-radar](https://github.com/hhdebb/herdr-radar) (MIT; the marks belong to
+their owners), the chips and the folder rows lead with the vendor's logo too.
+If herdr-bar or herdr-radar already shows logos in your terminal, there is
+nothing to do. Otherwise:
 
 ```bash
 # macOS; on Linux use ~/.local/share/fonts and run fc-cache -f afterwards
@@ -272,41 +268,10 @@ Then map the logo codepoints to it. In Ghostty:
 
 The picker looks for the font file where the platform keeps fonts (and asks
 fontconfig on Linux), and falls back to coloured names when it is not there. It
-cannot see your terminal's mapping: if you get boxes, check it, or set
-`"agent_icons": "none"`. Over ssh, where the font is on the machine you are
-typing on rather than the one running the picker, set `"agent_icons": "font"`.
-`python3 run.py --doctor` says which it found.
-
-### Starting without permission prompts
-
-`ctrl+y` arms the selected agent to start with its own approval prompts turned
-off — the thing you want for a tab you intend to walk away from, and the thing
-you want to be sure about otherwise. When it is armed the chip gains a `!`, the
-line above the hints reads `codex (skip permissions)`, and both turn yellow:
-
-```
-   agent  shell   claude   codex!   opencode   pi
-   → new tab in Atlas  ·  codex (skip permissions)                                    smart   tab   space
-     smart — a tab when that folder already has a space open, a new space when it does not
-   ⇥ agent   → complete   ↑↓ folder   ^T smart   ^Y prompts off   ⏎ create   esc close         ? help  1/8
-```
-
-Every CLI spells this differently and most do not spell it at all, so the flags
-are a table of what has been checked rather than a guess:
-
-| agent | argument |
-| --- | --- |
-| `claude` | `--dangerously-skip-permissions` |
-| `codex` | `--dangerously-bypass-approvals-and-sandbox` |
-
-On any other agent `ctrl+y` refuses and says so, rather than starting it with a
-flag that might mean something else. Teach it one with `skip_permission_flags`
-in the config; the arguments are handed to the agent's own executable through
-`herdr agent start ... -- <args>`, untouched.
-
-Unlike the agent itself, this is never remembered per folder. It is a decision
-about the tab you are opening now, and a folder that quietly kept it would be
-one you could only discover by reading the chip row.
+cannot see your terminal's mapping: if you get boxes, check the mapping, or set
+`"agent_icons": "none"`. Over ssh, where the font is on the machine you type on
+rather than the one running the picker, set `"agent_icons": "font"`.
+`--doctor` says which it found.
 
 ## Configuring
 
@@ -332,114 +297,125 @@ Optional, at `$(herdr plugin config-dir herdr-newtab-plus)/config.json`:
 | key | default | meaning |
 | --- | --- | --- |
 | `roots` | `~/workspace`, `~/projects`, `~/src`, `~/code`, `~/dev`, `~/repos` | scanned one level deep; missing ones are skipped |
-| `create` | `"smart"` | where the picker starts before `ctrl+t` has ever been pressed: `"smart"` reuses a space when the folder has one, `"tab"` always makes a tab, `"space"` always makes a space. The remembered position wins once there is one |
-| `agents` | `"auto"` | detect what is installed, or give an explicit list like `["claude", "codex"]` |
+| `create` | `"smart"` | where Enter lands before `ctrl+t` has ever been pressed: `"smart"`, `"tab"` or `"space"`. The remembered position wins once there is one |
+| `agents` | `"auto"` | detect what is installed, or an explicit list like `["claude", "codex"]` |
 | `default_agent` | `"last"` | `"last"` reuses the folder's remembered agent; `"none"` always starts a shell; or name a kind |
-| `skip_permission_flags` | `{}` | what `ctrl+y` passes per agent kind; merged over the built-in table, so an entry adds an agent or corrects one. `[]` disables the key for that kind |
+| `skip_permission_flags` | `{}` | what `ctrl+y` passes per agent kind, merged over the built-in table. `[]` disables the key for that kind |
 | `zoxide` | `"auto"` | on when zoxide is installed |
 | `hidden` | `false` | offer dot-directories while completing |
 | `mouse` | `true` | click and scroll |
 | `agent_icons` | `"auto"` | vendor logos from the [icon font](#agent-logos): `"auto"` when it is installed here, `"font"` always (over ssh), `"none"` never |
-| `preview` | `"auto"` | the folder preview on the right: `"auto"` when the popup is wide enough, `true` whenever it fits, `false` hidden until `ctrl+o` |
-| `colors` | `{}` | `accent`, `text`, `muted`, `dim`, `ghost`, `rule`, `match`, `agent`, `space`, `error`, `warn`; status `blocked`, `working`, `done`, `idle`; and one per agent: `agent_claude`, `agent_codex`, `agent_gemini`, `agent_cursor`, `agent_opencode`, `agent_kimi`, `agent_pi`, `agent_grok` — hex, ANSI name, or 0–255 |
+| `preview` | `"auto"` | the folder preview: `"auto"` when the popup is wide enough, `true` whenever it fits, `false` hidden until `ctrl+o` |
+| `colors` | `{}` | `accent`, `text`, `muted`, `dim`, `ghost`, `rule`, `match`, `agent`, `space`, `error`, `warn`; statuses `blocked`, `working`, `done`, `idle`; and one per agent: `agent_claude`, `agent_codex`, `agent_gemini`, `agent_cursor`, `agent_opencode`, `agent_kimi`, `agent_pi`, `agent_grok`. Hex, ANSI name, or 0–255 |
 | `selection_background` | `"auto"` | picked from the terminal's own background |
 
-The colors that mean something — the accent, the space name, the statuses, the
-warning — are plain ANSI, so they follow whatever theme your terminal and Herdr
-already use. The agents are the exception: each is in its vendor's colour, as in
-herdr-bar, and an agent with no colour of its own falls back to `agent`. The
-three tiers of grey that the rest of the text sits in are not ANSI either:
-`muted`, `dim` and `ghost` are fixed greys picked for contrast, tuned to the
-background the terminal reports, and `rule` — the lines between the sections —
-sits a step below all three, because it only divides. `bright_black` is the
-slot themes treat as decoration — Tokyo Night and its relatives set it to a
-near-background navy — and a hint label nobody can read is a hint label that is
-not there.
+The colours that carry meaning (the accent, the space name, the statuses, the
+warning) are plain ANSI, so they follow your terminal's theme. Agents are in
+their vendors' colours, as in herdr-bar. The three greys the rest of the text
+sits in (`muted`, `dim`, `ghost`) are fixed and tuned to the background the
+terminal reports, because themes often set `bright_black` to a near-background
+colour, and a hint nobody can read might as well not be there.
+
+## Performance
+
+The popup opens on a keypress and closes a few keystrokes later, so what
+matters is how soon the first frame appears and how quickly each keystroke
+shows. The numbers below come from the same black-box bench run against both
+releases: the real binary on a pseudo-terminal against a fake Herdr, on an
+M-series Mac. The large workload has 4,000 folders under the roots, 200 panes
+open, 80 recents and 400 zoxide entries.
+
+| | Python 0.1 | Rust 0.2 | |
+| --- | ---: | ---: | ---: |
+| first frame, 12 folders | 56.8 ms | 3.4 ms | **17×** |
+| first frame, 400 folders | 67.2 ms | 11.3 ms | **5.9×** |
+| first frame, 4,000 folders | 89.6 ms | 13.7 ms | **6.6×** |
+| keystroke, 4,000 folders (median) | 34.9 ms | 0.84 ms | **42×** |
+| keystroke, 4,000 folders (p99) | 45.2 ms | 3.2 ms | **14×** |
+| moving the selection (median) | 1.3 ms | 0.23 ms | **5.7×** |
+| Enter to the agent starting | 49.2 ms | 3.8 ms | **13×** |
+| CPU per session, 4,000 folders | 429 ms | 54 ms | **8×** |
+| peak memory, 4,000 folders | 27 MB | 12 MB | **2.3×** |
+| `--version` | 41.8 ms | 1.9 ms | **22×** |
+
+Each column is a saved run in [`bench/`](bench/): 24 sessions per workload
+for Rust, and 12 for the Python 0.1 release, measured the same way before the
+port.
+
+Bytes written to the terminal are identical: the Rust picker draws the same
+screens with the same diffs. Startup is close to the floor of starting any
+process; most of what is left is zoxide and Herdr answering.
+
+Some costs are properties of the code rather than the machine, so the tests
+hold them fixed on every push:
+
+- **landing on a folder asks the filesystem three questions**: what is in it
+  (which also says whether it exists), its branch, and whether it already has a
+  space. Coming back to it, or typing, asks none. These numbers must not grow
+  with the size of the catalog or the number of panes open.
+- **a keystroke costs about a hundred bytes on the wire**, and a navigation
+  about two rows' worth: a frame only redraws what changed.
 
 ## How it works
 
-Herdr does not record a folder on a workspace — only panes carry a `cwd`. So a
-space's folders are exactly the folders its panes are standing in, which makes
-the tab-versus-space decision an exact rule rather than a heuristic: a folder
-already has a space when some pane in that space is sitting in it. Symlinks are
-compared resolved, since a shell reports its cwd with links followed, but the
-folder handed to Herdr is the one you actually picked.
-
-Everything is read from a single `session.snapshot` when the popup opens. The
-tab or space is created while you are still looking at the last frame; only the
-agent — which Herdr waits on until it is genuinely ready for input — is handed
-to a detached child, which waits out the new shell's startup files before
-starting it. Failures there land in `agent-start.log` under the plugin's state
-directory.
+The picker is one short-lived process in a Herdr popup pane. It reads the whole
+session in a single `session.snapshot` call over Herdr's socket, and while
+Herdr answers it reads zoxide, the roots and the agents installed on PATH on
+threads of its own. When you press Enter it creates the tab or space before the
+popup closes. The agent, which Herdr waits on until it is ready for input, is
+handed to a detached child that waits out the new shell's startup files before
+starting it; failures land in `agent-start.log` in the plugin's state
+directory. Symlinks are followed when comparing folders, since a shell reports
+its working directory resolved, but the folder handed to Herdr is the one you
+picked.
 
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -t .
-python3 scripts/demo.py --plain --frame --size 107x28   # render a frame, no Herdr needed
-python3 scripts/demo.py --plain --create space          # ...in a given create mode
-python3 scripts/demo.py --plain --panel                 # ...or the ? help panel
-python3 scripts/demo.py --icons                         # ...with vendor logos (needs the font)
-python3 scripts/bench.py                                # measure and score it
-python3 scripts/record_demo.py                          # re-record the GIF above
-pipx run ruff check .
+git clone https://github.com/jeffarese/herdr-newtab-plus
+cd herdr-newtab-plus
+HERDR_NEWTAB_PLUS_BUILD=source sh scripts/install.sh   # build this clone (Rust 1.88+)
+herdr plugin link .                 # link never runs the build step, so build first
+
+cargo test --release                # unit tests, the install script, and parity
+NTP_PARITY_ONLY=pick-path cargo test --release --test parity   # some parity scenarios
+NTP_PARITY_BLESS=1 cargo test --release --test parity          # accept an intended UI change
+bin/herdr-newtab-plus --doctor      # environment diagnostics
+bin/herdr-newtab-plus --list        # the folders it would offer, as JSON
 ```
 
-`scripts/demo.py` composes a frame against a fixed session, so the layout can be
-looked at and asserted on without a pty. `107x28` is what the shipped popup
-actually gets: Herdr hands the pty `height - 2` rows and `width - 3` columns of
-the manifest's `110x30`.
+The picker started as a Python script, and the tests hold the Rust port to what
+that release did. `tests/parity.rs` drives the binary on a pseudo-terminal
+against a fake Herdr, in a synthetic home with fake agents and a fake zoxide,
+and compares every screen, every Herdr request and every state file with
+transcripts recorded from the Python release (`tests/parity/golden.json`) in
+106 scenarios. None of it needs a Herdr server. When a UI change is intended,
+bless the golden and review its diff.
 
-`scripts/record_demo.py` films the GIF at the top of this file. It drives the
-real picker through the same key handlers a terminal would, against the fixture
-catalog and a virtual filesystem, so path completion completes the same
-directories on any machine and no folder ever reads as missing. Frames are
-rasterised with Pillow and encoded by ffmpeg — the only two things in this
-repository that are not the standard library, and both of them are optional and
-only needed to re-record. `--stills` writes one PNG per scene, `--frame N` a
-single one. The logos are filmed when the Herdr Agent Icons Max font is
-installed on the recording machine, and left out when it is not.
-
-### Performance
-
-`scripts/bench.py` runs the picker against a synthetic catalog and session — no
-Herdr, no pty, no filesystem — and scores what it costs out of 100:
-
-| | budget | why that budget |
-| --- | --- | --- |
-| cold start | 120 ms | under this the popup reads as already open |
-| keystroke p95 | 3 ms | invisible beside the terminal's own frame time |
-| navigation p95 | 1.5 ms | as above, for the thing you hold a key down on |
-| bytes per keystroke | 400 B | one character in, a few rows re-sorted |
-| bytes per navigation | 1 kB | a selection band is full-bleed, so two whole rows |
-| lookups per frame | 3 | what is in the folder (which says whether it exists), its branch, and whether it already has a space |
-
-Budgets come from what the interaction needs, not from what the code currently
-does — a budget read off today's numbers can only ever say "no change".
-
-The measurements split in two, and the split is the point. Timings depend on the
-machine, so they are scored and never gated: a loaded laptop is not a
-regression. Bytes on the wire and questions asked of the filesystem depend on
-nothing but the code, so they are the same everywhere and `--check` fails on
-them — in CI, on every push. Lookups are counted as questions rather than
-syscalls, because `realpath` costs one `lstat` per path component and a number
-that moved with the depth of a home directory would not be a fact about the
-code.
+`cargo test` also holds the per-frame costs above (`src/tests/bench.rs`). The
+timings come from a bench that runs the binary the same black-box way:
 
 ```bash
-python3 scripts/bench.py --json today.json
-python3 scripts/bench.py --compare today.json   # after a change
-python3 scripts/bench.py --check                # what CI runs
+cargo build --release
+cargo run --release --example bench                    # report
+cargo run --release --example bench -- --compare python   # against the Python release
+cargo run --release --example bench -- --save today       # bench/today.json
 ```
 
-`--check` also asserts the invariants an absolute ceiling cannot: that a frame's
-filesystem cost grows with neither the size of the catalog nor the number of
-panes already open, and that returning to a folder costs less than arriving at
-it. A frame draws the dozen rows that fit and reasons from a snapshot that
-cannot change while the popup is up, so the day something starts statting per
-row — or re-deriving the session behind every keystroke — it says so however
-fast the machine it ran on happened to be.
+The README demo is recorded from the real binary too, on a pseudo-terminal
+against a fake Herdr session, in real time:
+`cargo run --release --features demo --example record_demo` writes
+`demo/herdr-newtab-plus.gif` and `.mp4` (needs `ffmpeg`, and the Herdr Agent
+Icons Max font for the logos). The `demo` feature is never part of the plugin
+build.
+
+## Goes well with
+
+[herdr-bar](https://github.com/jeffarese/herdr-bar) is the other half of the
+loop. This picker opens the tab you don't have yet; the bar jumps you to the
+ones you already have, with automatic tab titles, agent icons and a Cmd+K
+search.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).

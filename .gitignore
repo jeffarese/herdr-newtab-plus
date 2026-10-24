@@ -1,9 +1,4 @@
-__pycache__/
-*.py[cod]
 .DS_Store
-.venv/
-.ruff_cache/
-.pytest_cache/
 
 # What examples/record_demo leaves in demo/ besides the .mp4 and .gif that are
 # kept: its working files (the lossless master, the GIF palette), and the PNGs
