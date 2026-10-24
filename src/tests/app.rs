@@ -790,3 +790,47 @@ mod cancel {
         }
     }
 }
+
+/// The startup can draw its first frame from the catalog's leading rows:
+/// the rows on screen, then any rows to make the list's length. It hands
+/// the picker the whole catalog before the first key, and that picker must
+/// be the one made from the whole catalog: the same frame, rows and chip,
+/// and the same answer to a key.
+#[test]
+fn a_picker_given_the_rest_of_its_catalog_is_the_one_made_whole() {
+    let named: Vec<String> = (0..30).map(|index| format!("folder-{index:02}")).collect();
+    let full = catalog(&named.iter().map(String::as_str).collect::<Vec<_>>());
+    let make = |rows: Vec<Row>| {
+        let mut recents = Recents::new(None);
+        recents.touch("/a/folder-00", "claude");
+        recents.touch("/elsewhere", "codex");
+        PickerSpec {
+            catalog: rows,
+            config: Some(config(r#"{"roots": [], "max_suggestions": 20, "default_agent": "last"}"#)),
+            recents: Some(recents),
+            ..Default::default()
+        }
+        .build()
+    };
+    let mut whole = make(full.clone());
+    // What is on screen, then other rows standing in for the ones below it.
+    let mut leading: Vec<Row> =
+        full[..crate::render::MAX_LIST as usize].iter().map(|row| std::sync::Arc::new((**row).clone())).collect();
+    leading.extend(catalog(&["x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10"]));
+    let mut early = make(leading);
+    for (width, height) in [(100, 24), (100, 40), (60, 16)] {
+        assert_eq!(early.frame(width, height), whole.frame(width, height), "{width}x{height}");
+    }
+    early.set_catalog(full.clone());
+    assert_eq!(early.frame(100, 24), whole.frame(100, 24));
+    assert_eq!((names(&early), early.selected, early.chip), (names(&whole), whole.selected, whole.chip));
+    assert_eq!(whole.chip, 1, "row 0 remembers claude");
+    early.insert("29", false);
+    whole.insert("29", false);
+    assert_eq!(names(&early), names(&whole));
+    assert!(
+        names(&early).contains(&"folder-29".to_string()),
+        "a row the first frame did not have: {:?}",
+        names(&early)
+    );
+}

@@ -120,8 +120,7 @@ impl Picker {
         theme: Theme,
         base: String,
     ) -> Picker {
-        let last = recents.last_agent();
-        let chip = initial_index(&chips, &config.default_agent, last.as_deref());
+        let chip = initial_index(&chips, &config.default_agent, recents.last_agent().as_deref());
         let create_mode = recents.create_mode().unwrap_or(config.create);
         let row_agents = if config.default_agent == "last" { recents.agents() } else { HashMap::new() };
         let statuses = folder_statuses(&snapshot);
@@ -167,6 +166,14 @@ impl Picker {
         };
         picker.refilter(None);
         picker
+    }
+
+    /// The whole catalog, for a picker made from its leading rows. Nothing
+    /// has been typed yet, so the list is the resting one again.
+    pub fn set_catalog(&mut self, catalog: Vec<Row>) {
+        self.catalog = catalog;
+        self.chip = initial_index(&self.chips, &self.config.default_agent, self.recents.last_agent().as_deref());
+        self.refilter(None);
     }
 
     // -- derived state ------------------------------------------------------

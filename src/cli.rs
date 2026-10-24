@@ -11,12 +11,14 @@ use crate::agents::{self, Agent};
 use crate::app::{Choice, Picker};
 use crate::client::{HerdrClient, HerdrError};
 use crate::config::Config;
+use crate::fxhash::FxHashMap;
 use crate::icons;
 use crate::par;
 use crate::paths::{self, Row};
 use crate::pyjson::{self, Map, Value};
 use crate::pyos;
-use crate::session::{agent_name, created_ids, focused_cwd, live_agent_names, TAB};
+use crate::render;
+use crate::session::{agent_name, created_ids, focused_cwd, live_agent_names, SpaceMap, TAB};
 use crate::state::Recents;
 use crate::term::{self, Terminal};
 use crate::theme::{default_selection_background, Theme};
@@ -65,12 +67,30 @@ fn out(text: &str) {
     let _ = stdout.flush();
 }
 
-/// Herdr's snapshot, and the catalog built from it.
+/// Each root's subdirectories, as `prefetch_roots` reads them.
+type Listings = Vec<(String, Vec<(String, bool)>)>;
+/// zoxide's folders, with whether each is a folder and a checkout.
+type Frecent = (Option<Vec<String>>, FxHashMap<String, bool>);
+
+/// What the startup has of the catalog once Herdr's snapshot is in: the
+/// snapshot, its space map, the recents and what was asked of them, and the
+/// two reads still under way.
+struct Startup {
+    snapshot: Value,
+    owned: SpaceMap,
+    recent: Vec<String>,
+    asked: FxHashMap<String, bool>,
+    disk: par::Pending<Listings>,
+    zoxide: par::Pending<Frecent>,
+}
+
+/// Herdr's snapshot, with the reads that do not depend on it started first.
 ///
-/// zoxide's answer and the roots' listings do not depend on the snapshot, so
-/// they are read on threads of their own while Herdr answers, rather than
-/// after it. An error returns without waiting for them.
-fn catalog(client: &mut HerdrClient, config: &Config, recents: &Recents) -> Result<(Value, Vec<Row>), HerdrError> {
+/// zoxide's answer, the roots' listings and the recents' folders do not
+/// depend on the snapshot, so they are read on threads of their own while
+/// Herdr answers, rather than after it. An error returns without waiting
+/// for them.
+fn start_catalog(client: &mut HerdrClient, config: &Config, recents: &Recents) -> Result<Startup, HerdrError> {
     let setting = config.zoxide.clone();
     let zoxide = par::start(move || {
         let folders = crate::config::zoxide_wanted(&setting, paths::zoxide_installed())
@@ -80,23 +100,48 @@ fn catalog(client: &mut HerdrClient, config: &Config, recents: &Recents) -> Resu
     });
     let recent = recents.folders();
     let (roots, hidden, ahead) = (config.roots.clone(), config.hidden, recent.clone());
-    let disk = par::start(move || (paths::prefetch_roots(&roots, hidden), paths::ask_dirs(&ahead)));
+    let disk = par::start(move || paths::prefetch_roots(&roots, hidden));
+    let recent_asked = par::start(move || paths::ask_dirs(&ahead));
     let snapshot = client.snapshot()?;
     let owned = crate::session::space_folders(&snapshot);
     let open: Vec<String> = owned.iter().map(|(folder, _)| folder.clone()).collect();
     let mut asked = paths::ask_dirs(&open);
-    let (listings, recent_asked) = disk.join();
-    asked.extend(recent_asked);
-    paths::seed_listings(listings, config.hidden);
-    // Everything that does not need zoxide's answer is built while it is
-    // still coming: the rows before zoxide's, and the roots' rows after them.
-    let mut builder = paths::CatalogBuilder::new(&owned, asked);
-    builder.add_recents_and_spaces(&recent);
-    let roots = builder.prepare_roots(&config.roots, config.hidden);
+    asked.extend(recent_asked.join());
+    Ok(Startup { snapshot, owned, recent, asked, disk, zoxide })
+}
+
+/// The roots' rows, once their listings are in. They are made before
+/// zoxide's, which come first in the catalog, in case zoxide is still
+/// answering.
+fn root_rows(
+    builder: &paths::CatalogBuilder,
+    disk: par::Pending<Listings>,
+    roots: &[String],
+    hidden: bool,
+) -> paths::RootRows {
+    paths::seed_listings(disk.join(), hidden);
+    builder.prepare_roots(roots, hidden)
+}
+
+/// The rest of the catalog, once zoxide is in: its rows, then the roots'.
+fn finish_catalog(
+    mut builder: paths::CatalogBuilder,
+    roots: paths::RootRows,
+    zoxide: par::Pending<Frecent>,
+) -> Vec<Row> {
     let (zoxide, zoxide_asked) = zoxide.join();
     builder.add_zoxide(zoxide, zoxide_asked);
     builder.add_roots(roots);
-    Ok((snapshot, builder.finish()))
+    builder.finish()
+}
+
+/// Herdr's snapshot, and the whole catalog built from it.
+fn catalog(client: &mut HerdrClient, config: &Config, recents: &Recents) -> Result<(Value, Vec<Row>), HerdrError> {
+    let Startup { snapshot, owned, recent, asked, disk, zoxide } = start_catalog(client, config, recents)?;
+    let mut builder = paths::CatalogBuilder::new(&owned, asked);
+    builder.add_recents_and_spaces(&recent);
+    let roots = root_rows(&builder, disk, &config.roots, config.hidden);
+    Ok((snapshot, finish_catalog(builder, roots, zoxide)))
 }
 
 /// Which offered agents ctrl+Y can actually arm, and with what.
@@ -420,11 +465,34 @@ pub fn main(args: Vec<String>) -> i32 {
     if config.agent_icons == "auto" {
         icons::prefetch(); // overlaps the snapshot request rather than following it
     }
-    let (snapshot, catalog) = match catalog(&mut client, &config, &recents) {
+    let Startup { snapshot, owned, recent, asked, disk, zoxide } = match start_catalog(&mut client, &config, &recents) {
         Ok(found) => found,
         Err(error) => return fail(&error.to_string()),
     };
-
+    let mut builder = paths::CatalogBuilder::new(&owned, asked);
+    builder.add_recents_and_spaces(&recent);
+    // zoxide is a process to start, and often the last answer in. Its rows
+    // come after the recents and the spaces, and it can only add rows, so
+    // when those fill the screen, and they and the roots' rows come to the
+    // most the list holds, the first frame is the same with or without it:
+    // the rows on screen, the count and the scrollbar. Then it is drawn
+    // without waiting, and the catalog is finished before the first key is
+    // read. Otherwise it is finished first, as it always was. The roots are
+    // waited for only when the recents and spaces alone fall short.
+    let (visible, limit) = (render::MAX_LIST as usize, config.max_suggestions);
+    let (leading, roots) = match builder.leading_rows(None, visible, limit) {
+        Some(rows) => (Some(rows), Err(disk)),
+        None => {
+            let roots = root_rows(&builder, disk, &config.roots, config.hidden);
+            (builder.leading_rows(Some(&roots), visible, limit), Ok(roots))
+        }
+    };
+    let (root_list, hidden) = (config.roots.clone(), config.hidden);
+    let mut rest = Some(move || {
+        let roots = roots.unwrap_or_else(|disk| root_rows(&builder, disk, &root_list, hidden));
+        finish_catalog(builder, roots, zoxide)
+    });
+    let early = leading.is_some();
     // One appearance query, and only when something still depends on it: it
     // costs a round trip to the terminal on every open.
     let mut selection_background = config.selection_background.clone();
@@ -443,10 +511,21 @@ pub fn main(args: Vec<String>) -> i32 {
     let base = focused_cwd(&snapshot).filter(|b| !b.is_empty()).unwrap_or_else(paths::home);
     let mouse = config.mouse;
     let skip_flags = config.skip_permission_flags.clone();
-    let mut picker = Picker::new(snapshot, catalog, chips, config, recents, theme, base);
+    let mut picker = Picker::new(snapshot, leading.unwrap_or_default(), chips, config, recents, theme, base);
+    if !early {
+        if let Some(rest) = rest.take() {
+            picker.set_catalog(rest());
+        }
+    }
 
     let choice = match Terminal::enter(mouse) {
-        Ok(mut terminal) => picker.run(&mut terminal),
+        Ok(mut terminal) => {
+            if let Some(rest) = rest.take() {
+                picker.draw(&mut terminal);
+                picker.set_catalog(rest());
+            }
+            picker.run(&mut terminal)
+        }
         Err(error) => return fail(&crate::client::os_error_str(&error)),
     };
 

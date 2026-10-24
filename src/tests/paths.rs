@@ -322,6 +322,40 @@ fn root_rows_made_ahead_make_the_catalog_row_by_row_does() {
     paths::clear_cache();
 }
 
+/// The rows the first frame can be drawn from before zoxide is in: the
+/// catalog's own first rows, as many as are on screen, then enough of the
+/// roots' rows that are not repeats to make the list's length, which zoxide
+/// can only add to. Short of either, there are none.
+#[test]
+fn leading_rows_are_the_whole_catalogs_first_rows() {
+    let _lock = env_lock();
+    let tree =
+        TempDir::with(&["root/alpha/.git", "root/beta", "root/gamma/.git", "root/open/.git", "root/delta", "other"]);
+    paths::clear_cache();
+    let root = vec![tree.join("root")];
+    let snap = snapshot(vec![pane("w1:p1", &tree.join("root/open"), "w1")], None);
+    let owned = crate::session::space_folders(&snap);
+    let recents = vec![tree.join("root/alpha"), tree.join("other"), tree.join("root/beta")];
+    // zoxide repeats a recent and the space, and the root repeats them all.
+    let zoxide = Some(vec![tree.join("root/gamma"), tree.join("root/beta"), tree.join("root/open")]);
+    let mut builder = paths::CatalogBuilder::new(&owned, Default::default());
+    builder.add_recents_and_spaces(&recents);
+    let prepared = builder.prepare_roots(&root, false);
+    assert!(builder.leading_rows(Some(&prepared), 5, 6).is_none(), "four rows cannot fill five on screen");
+    assert!(builder.leading_rows(Some(&prepared), 4, 7).is_none(), "the root adds two, so six is all that is known");
+    assert!(builder.leading_rows(None, 4, 6).is_none(), "without the root, four rows are all that is known");
+    assert_eq!(builder.leading_rows(None, 4, 4).map(|rows| rows.len()), Some(4));
+    let leading = builder.leading_rows(Some(&prepared), 4, 6).unwrap();
+    builder.add_zoxide(zoxide, Default::default());
+    builder.add_roots(prepared);
+    let full = builder.finish();
+    assert_eq!(full.len(), 6, "{full:?}");
+    assert_eq!(leading.len(), 6);
+    assert_eq!(leading[..4], full[..4]);
+    assert!(leading.iter().zip(&full).all(|(copy, row)| !std::sync::Arc::ptr_eq(copy, row)));
+    paths::clear_cache();
+}
+
 /// `path` written relative to `base`, for comparing rows across trees.
 fn pyos_rel(path: &str, base: &str) -> String {
     path.strip_prefix(base).map(|rest| rest.trim_start_matches('/').to_string()).unwrap_or_else(|| path.to_string())

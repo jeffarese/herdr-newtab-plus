@@ -2418,6 +2418,302 @@
    ]
   },
   {
+   "name": "pick-early-browse",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000290
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000280
+      },
+      {
+       "path": "{root}/lighthouse",
+       "agent": "",
+       "ts": 1700000270
+      },
+      {
+       "path": "{root}/nimbus",
+       "agent": "claude",
+       "ts": 1700000260
+      },
+      {
+       "path": "{root}/orchard",
+       "agent": "codex",
+       "ts": 1700000250
+      },
+      {
+       "path": "{root}/relay",
+       "agent": "",
+       "ts": 1700000240
+      },
+      {
+       "path": "{root}/sable",
+       "agent": "claude",
+       "ts": 1700000230
+      },
+      {
+       "path": "{root}/tern",
+       "agent": "",
+       "ts": 1700000220
+      },
+      {
+       "path": "{root}/umbra",
+       "agent": "codex",
+       "ts": 1700000210
+      },
+      {
+       "path": "{root}/dotfiles",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/cargo-lab",
+       "agent": "claude",
+       "ts": 1700000190
+      }
+     ]
+    }
+   },
+   "zoxide": "  120.5 {root}/zephyr\n   88.0 {root}/willow\n   40.0 {root}/quartz\n   12.0 {root}/meridian\n    2.5 {root}/atlas\n",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "zoxide": true,
+    "max_suggestions": 20
+   },
+   "steps": [
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b[6~"
+    ],
+    [
+     "keys",
+     "\u001b[5~"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-early-type",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000290
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000280
+      },
+      {
+       "path": "{root}/lighthouse",
+       "agent": "",
+       "ts": 1700000270
+      },
+      {
+       "path": "{root}/nimbus",
+       "agent": "claude",
+       "ts": 1700000260
+      },
+      {
+       "path": "{root}/orchard",
+       "agent": "codex",
+       "ts": 1700000250
+      },
+      {
+       "path": "{root}/relay",
+       "agent": "",
+       "ts": 1700000240
+      },
+      {
+       "path": "{root}/sable",
+       "agent": "claude",
+       "ts": 1700000230
+      },
+      {
+       "path": "{root}/tern",
+       "agent": "",
+       "ts": 1700000220
+      },
+      {
+       "path": "{root}/umbra",
+       "agent": "codex",
+       "ts": 1700000210
+      },
+      {
+       "path": "{root}/dotfiles",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/cargo-lab",
+       "agent": "claude",
+       "ts": 1700000190
+      }
+     ]
+    }
+   },
+   "zoxide": "  120.5 {root}/zephyr\n   88.0 {root}/willow\n   40.0 {root}/quartz\n   12.0 {root}/meridian\n    2.5 {root}/atlas\n",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "zoxide": true,
+    "max_suggestions": 20
+   },
+   "steps": [
+    [
+     "type",
+     "wil"
+    ],
+    [
+     "keys",
+     "\u001b[B"
+    ],
+    [
+     "keys",
+     "\u007f"
+    ],
+    [
+     "type",
+     "zep"
+    ],
+    [
+     "keys",
+     "\u001b"
+    ]
+   ]
+  },
+  {
+   "name": "pick-early-create",
+   "kind": "picker",
+   "files": {
+    "recent.json": {
+     "version": 1,
+     "entries": [
+      {
+       "path": "{root}/meridian",
+       "agent": "codex",
+       "ts": 1700000300
+      },
+      {
+       "path": "{root}/beacon",
+       "agent": "",
+       "ts": 1700000290
+      },
+      {
+       "path": "{root}/atlas",
+       "agent": "claude",
+       "ts": 1700000280
+      },
+      {
+       "path": "{root}/lighthouse",
+       "agent": "",
+       "ts": 1700000270
+      },
+      {
+       "path": "{root}/nimbus",
+       "agent": "claude",
+       "ts": 1700000260
+      },
+      {
+       "path": "{root}/orchard",
+       "agent": "codex",
+       "ts": 1700000250
+      },
+      {
+       "path": "{root}/relay",
+       "agent": "",
+       "ts": 1700000240
+      },
+      {
+       "path": "{root}/sable",
+       "agent": "claude",
+       "ts": 1700000230
+      },
+      {
+       "path": "{root}/tern",
+       "agent": "",
+       "ts": 1700000220
+      },
+      {
+       "path": "{root}/umbra",
+       "agent": "codex",
+       "ts": 1700000210
+      },
+      {
+       "path": "{root}/dotfiles",
+       "agent": "",
+       "ts": 1700000200
+      },
+      {
+       "path": "{root}/cargo-lab",
+       "agent": "claude",
+       "ts": 1700000190
+      }
+     ]
+    }
+   },
+   "zoxide": "  120.5 {root}/zephyr\n   88.0 {root}/willow\n   40.0 {root}/quartz\n   12.0 {root}/meridian\n    2.5 {root}/atlas\n",
+   "config": {
+    "roots": [
+     "~/work"
+    ],
+    "zoxide": true,
+    "max_suggestions": 20
+   },
+   "expect_agent": true,
+   "steps": [
+    [
+     "type",
+     "zeph"
+    ],
+    [
+     "keys",
+     "\r"
+    ]
+   ]
+  },
+  {
    "name": "pick-many-agents",
    "kind": "picker",
    "agents_on_path": [

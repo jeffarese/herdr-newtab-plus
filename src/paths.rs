@@ -580,9 +580,9 @@ pub fn root_folders(roots: &[String], hidden: bool) -> Vec<(String, bool)> {
 }
 
 /// The catalog, built in the order it is shown: recents, open spaces,
-/// zoxide, roots. `cli::catalog` builds it step by step so that the root
-/// rows are made while zoxide is still answering; `build_catalog_with` is
-/// the same steps in one go.
+/// zoxide, roots. The startup builds it step by step, so that the root rows
+/// are made while zoxide is still answering and the first frame can be
+/// drawn before it is in; `build_catalog_with` is the same steps in one go.
 pub struct CatalogBuilder<'a> {
     owned: &'a SpaceMap,
     /// Rows are shared once built, but only the builder holds them until
@@ -686,6 +686,30 @@ impl<'a> CatalogBuilder<'a> {
                 None => self.out.push(row),
             }
         }
+    }
+
+    /// The rows a first frame can be drawn from before zoxide is in, copied:
+    /// the first `visible` rows of the catalog, and enough rows after them to
+    /// make `limit`, so that what the frame shows of the rest -- the count,
+    /// the scrollbar -- is what the whole catalog's would be. None when that
+    /// is not yet known.
+    ///
+    /// The rows so far lead the catalog, and nothing added after them comes
+    /// before them. A later repeat of one changes its source only when it is
+    /// a better one, which none after the recents and spaces is, and marks it
+    /// a checkout only when it is one, which it was already asked. zoxide's
+    /// rows come next and the roots' last, and zoxide only ever adds rows, so
+    /// the roots' rows that are not repeats, when they are in, count towards
+    /// `limit` even though they are not the rows that will follow.
+    pub fn leading_rows(&self, roots: Option<&RootRows>, visible: usize, limit: usize) -> Option<Vec<Row>> {
+        if self.out.len() < visible.min(limit) {
+            return None;
+        }
+        let listed = roots.map(|roots| roots.rows.as_slice()).unwrap_or_default();
+        let fresh = listed.iter().filter(|row| !self.seen.contains_key(&row.path));
+        let rows: Vec<Row> =
+            self.out.iter().chain(fresh).take(limit).map(|row| Arc::new(Suggestion::clone(row))).collect();
+        (rows.len() == limit).then_some(rows)
     }
 
     pub fn finish(self) -> Vec<Row> {
