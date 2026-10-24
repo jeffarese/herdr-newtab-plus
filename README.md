@@ -9,7 +9,7 @@ completed against the real filesystem), pick an agent, and Enter opens the tab
 there with the agent already starting. A folder that already has a space gets
 a tab in it; any other folder gets a space of its own.
 
-![herdr-newtab-plus: pick a folder, pick an agent, press enter](demo/herdr-newtab-plus.gif)
+![herdr-newtab-plus: pick a folder, pick an agent, press enter, then the same picker over 4,000 folders](demo/herdr-newtab-plus.gif)
 
 - **the folders you use, before you type** — recent picks first, then folders
   that already have a space open (badged with its name and the status of any
@@ -422,8 +422,11 @@ The README demo is recorded from the real binary too, on a pseudo-terminal
 against a fake Herdr session, in real time:
 `cargo run --release --features demo --example record_demo` writes
 `demo/herdr-newtab-plus.gif` and `.mp4` (needs `ffmpeg`, and the Herdr Agent
-Icons Max font for the logos). The `demo` feature is never part of the plugin
-build.
+Icons Max font for the logos). It tours a small home, then opens the picker on
+one the size of the bench's large workload, and the timings in those captions
+are the bench's medians from `bench/rust.json`: timings taken while filming
+would measure whatever else the machine is doing. The `demo` feature is never
+part of the plugin build.
 
 ## Goes well with
 

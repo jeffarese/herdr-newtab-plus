@@ -1,4 +1,5 @@
-//! Film the picker choosing a folder and an agent.
+//! Film the picker choosing a folder and an agent, then the same picker
+//! over 4,000 folders, captioned with the bench's medians for that size.
 //!
 //! ```text
 //! cargo run --release --features demo --example record_demo             # demo/herdr-newtab-plus.mp4 + .gif
@@ -66,10 +67,10 @@ fn main() {
 #[cfg(unix)]
 mod unix {
     use crate::herdr::Herdr;
-    use crate::machine::Machine;
+    use crate::machine::{Machine, CROWD_FOLDERS};
     use crate::paint::{sgr_color, Cell, Frame, Painter, CHIP_TTL, COLS, DEFAULT_FG, PANEL_BG, ROWS};
     use crate::pty::Session;
-    use crate::pyjson::Value;
+    use crate::pyjson::{self, Value};
     use crate::screen::Screen;
     use std::io::Write;
     use std::path::{Path, PathBuf};
@@ -146,6 +147,14 @@ mod unix {
         path
     }
 
+    /// What the camera films: the screen the current picker draws on, and
+    /// the Herdr whose requests say what Enter did.
+    struct Stage {
+        screen: Arc<Mutex<Screen>>,
+        herdr: Arc<Herdr>,
+        labels: Vec<(String, String)>,
+    }
+
     /// What the camera sees between frames.
     struct Live {
         caption: String,
@@ -161,7 +170,11 @@ mod unix {
         at: f64,
         live: Arc<Mutex<Live>>,
         frames: Arc<Mutex<Vec<Frame>>>,
+        stage: Arc<Mutex<Stage>>,
         session: Option<Session>,
+        /// Pickers that have closed, kept so the agent each handed off can
+        /// still finish talking to its Herdr.
+        closed: Vec<Session>,
     }
 
     impl Recorder {
@@ -179,6 +192,27 @@ mod unix {
             if target > now {
                 std::thread::sleep(target - now);
             }
+        }
+
+        /// Start a picker on a blank screen of its own.
+        fn open(&mut self, command: Command) {
+            let screen = Arc::new(Mutex::new(Screen::new(COLS, ROWS)));
+            self.stage.lock().unwrap().screen = screen.clone();
+            self.closed.extend(self.session.take());
+            self.session = Some(Session::spawn(command, COLS as u16, ROWS as u16, screen));
+        }
+
+        /// Cut to an empty panel in front of another Herdr.
+        fn cut(&mut self, herdr: Arc<Herdr>, labels: Vec<(String, String)>) {
+            self.clear();
+            let mut stage = self.stage.lock().unwrap();
+            stage.herdr = herdr;
+            stage.labels = labels;
+        }
+
+        /// Cut to an empty panel, as Herdr does when a popup closes.
+        fn clear(&mut self) {
+            self.stage.lock().unwrap().screen = Arc::new(Mutex::new(Screen::new(COLS, ROWS)));
         }
 
         fn send(&mut self, bytes: &[u8], chip: &str, dwell: f64) {
@@ -207,12 +241,49 @@ mod unix {
         }
     }
 
-    /// The script: the old recorder's scenes, captions, keys and pauses.
-    fn perform(r: &mut Recorder, spawn: impl FnOnce() -> Session) {
+    /// The bench's medians for the large workload, from the saved run the
+    /// README's table quotes. A recording shares the machine with whatever
+    /// else runs on it, so timings taken while filming say more about the
+    /// load than about the picker.
+    struct Timings {
+        runs: i128,
+        first_frame: f64,
+        keystroke: f64,
+        listing: f64,
+    }
+
+    fn timings() -> Timings {
+        let path = Path::new(ROOT).join("bench/rust.json");
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
+        let data = pyjson::loads(&text).unwrap_or_else(|_| panic!("{} is not JSON", path.display()));
+        let large = data.get("results").get("large");
+        let value = |key: &str| match large.get(key) {
+            Value::Float(value) => *value,
+            Value::Int(value) => *value as f64,
+            _ => panic!("{} has no results.large.{}", path.display(), key),
+        };
+        let Value::Int(runs) = data.get("runs") else { panic!("{} has no runs", path.display()) };
+        Timings {
+            runs: *runs,
+            first_frame: value("first_frame_p50_ms"),
+            keystroke: value("keystroke_p50_ms"),
+            listing: value("path_max_p50_ms"),
+        }
+    }
+
+    /// The second act: what the finale films, and in front of which Herdr.
+    struct Act {
+        command: Command,
+        herdr: Arc<Herdr>,
+        labels: Vec<(String, String)>,
+    }
+
+    /// The script: the tour of what the picker does, then the finale.
+    fn perform(r: &mut Recorder, tour: Command, crowd: Act) {
         r.say("one keybinding, and a new tab starts by asking where");
         // The empty panel first, so the popup is seen opening.
         r.hold(0.4);
-        r.session = Some(spawn());
+        r.open(tour);
         r.hold(1.4);
 
         r.say("before you type: folders you were just in, and the ones already open");
@@ -281,6 +352,55 @@ mod unix {
         r.hold(1.4);
         r.key("enter", 0.1);
         r.hold(2.4);
+
+        finale(r, crowd);
+    }
+
+    /// The same picker over the bench's large workload, captioned with what
+    /// the bench measured at that size.
+    fn finale(r: &mut Recorder, crowd: Act) {
+        let bench = timings();
+        let folders = thousands(CROWD_FOLDERS);
+        r.cut(crowd.herdr, crowd.labels);
+        r.say(&format!("and at scale: {} folders, 200 panes open, 80 recents, 400 in zoxide", folders));
+        r.hold(2.0);
+        r.open(crowd.command);
+        r.hold(1.2);
+        r.say(&format!(
+            "its first frame takes {:.1} ms at this size · the median of {} bench runs",
+            bench.first_frame, bench.runs
+        ));
+        r.hold(2.8);
+
+        r.say(&format!("fuzzy over all {} · {:.2} ms a keystroke, the median", folders, bench.keystroke));
+        r.type_text("payw", 0.32);
+        r.hold(2.4);
+
+        r.say(&format!("a / lists the folder as you type: all {} in {:.2} ms, the median", folders, bench.listing));
+        r.key("ctrl+u", 0.4);
+        r.type_text("~/code/", 0.14);
+        r.hold(0.8);
+        r.type_text("aur", 0.28);
+        r.hold(2.4);
+
+        r.key("esc", 0.3);
+        r.clear();
+        r.hold(0.3);
+        r.say("herdr plugin install jeffarese/herdr-newtab-plus");
+        r.hold(3.0);
+    }
+
+    /// 4000 as 4,000.
+    fn thousands(value: usize) -> String {
+        let digits = value.to_string();
+        let mut out = String::new();
+        for (index, c) in digits.chars().enumerate() {
+            if index > 0 && (digits.len() - index).is_multiple_of(3) {
+                out.push(',');
+            }
+            out.push(c);
+        }
+        out
     }
 
     /// What Enter resolved to, in the words the popup would have used: the
@@ -420,21 +540,27 @@ mod unix {
             panic!("install herdr-radar's Herdr Agent Icons Max font to film the vendor logos");
         }
 
-        // -- the machine ------------------------------------------------------
+        // -- the machines -----------------------------------------------------
         let mut machine = Machine::new();
         let herdr: Arc<Herdr> = Arc::new(machine.herdr());
         let labels = machine.labels.clone();
         let command = machine.command(&binary);
+        let mut crowd = Machine::crowd();
+        let crowd_herdr: Arc<Herdr> = Arc::new(crowd.herdr());
+        let act = Act { command: crowd.command(&binary), herdr: crowd_herdr.clone(), labels: crowd.labels.clone() };
 
         // -- the camera -------------------------------------------------------
-        let screen = Arc::new(Mutex::new(Screen::new(COLS, ROWS)));
+        let stage = Arc::new(Mutex::new(Stage {
+            screen: Arc::new(Mutex::new(Screen::new(COLS, ROWS))),
+            herdr: herdr.clone(),
+            labels: labels.clone(),
+        }));
         let live = Arc::new(Mutex::new(Live { caption: String::new(), chip: None, scenes: Vec::new() }));
         let frames: Arc<Mutex<Vec<Frame>>> = Arc::new(Mutex::new(Vec::new()));
         let rolling = Arc::new(AtomicBool::new(true));
         let start = Instant::now();
         let camera = {
-            let (screen, live, frames, rolling, herdr) =
-                (screen.clone(), live.clone(), frames.clone(), rolling.clone(), herdr.clone());
+            let (stage, live, frames, rolling) = (stage.clone(), live.clone(), frames.clone(), rolling.clone());
             std::thread::spawn(move || {
                 let mut tick = 0u32;
                 while rolling.load(Ordering::SeqCst) {
@@ -443,6 +569,10 @@ mod unix {
                     if target > now {
                         std::thread::sleep(target - now);
                     }
+                    let (screen, herdr, labels) = {
+                        let stage = stage.lock().unwrap();
+                        (stage.screen.clone(), stage.herdr.clone(), stage.labels.clone())
+                    };
                     let outcome = outcome(&herdr.changes(), &labels).unwrap_or_default();
                     let frame = {
                         let screen = screen.lock().unwrap();
@@ -455,29 +585,44 @@ mod unix {
             })
         };
 
-        let mut recorder = Recorder { start, at: 0.0, live: live.clone(), frames: frames.clone(), session: None };
-        let spawn_screen = screen.clone();
-        perform(&mut recorder, || Session::spawn(command, COLS as u16, ROWS as u16, spawn_screen));
+        let mut recorder = Recorder {
+            start,
+            at: 0.0,
+            live: live.clone(),
+            frames: frames.clone(),
+            stage: stage.clone(),
+            session: None,
+            closed: Vec::new(),
+        };
+        perform(&mut recorder, command, act);
         rolling.store(false, Ordering::SeqCst);
         camera.join().unwrap();
 
         // The agent is started by a detached child after the popup has gone;
         // let it finish talking to the fake Herdr before that goes away.
         herdr.wait_for("agent.start", 5.0);
-        let mut session = recorder.session.take().expect("the script never opened the picker");
-        let exited = session.exited();
-        drop(session);
+        let mut tour = recorder.closed.drain(..).next().expect("the script never opened the picker");
+        let mut finale = recorder.session.take().expect("the script never opened the finale");
+        let exited = (tour.exited(), finale.exited());
+        drop((tour, finale));
         let changes = herdr.changes();
-        drop(herdr);
-        drop(machine);
+        let crowd_changes = crowd_herdr.changes();
+        // Each Herdr closes by connecting to its own socket, so the last
+        // hold on it goes before the machine that holds the socket.
+        drop((recorder, stage));
+        drop((herdr, crowd_herdr));
+        drop((machine, crowd));
         match (exited, outcome(&changes, &[])) {
-            (Some(status), Some(_)) if status.success() => {}
+            ((Some(status), Some(_)), Some(_)) if status.success() => {}
             (status, outcome) => {
                 eprintln!(
-                    "warning: the script ended without the picker creating and exiting ({:?}, {:?})",
+                    "warning: the script ended without the picker creating and both exiting ({:?}, {:?})",
                     status, outcome
                 )
             }
+        }
+        if outcome(&crowd_changes, &[]).is_some() {
+            eprintln!("warning: the finale created something; it should only look");
         }
 
         // -- the film ---------------------------------------------------------
