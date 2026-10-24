@@ -1020,60 +1020,85 @@ pub fn filter_catalog(catalog: &[Row], query: &str, limit: usize) -> Vec<Scored>
     filter_catalog_narrowing(catalog, query, limit, &mut Narrowing::default())
 }
 
-/// The rows the last query matched, by index into the catalog it filtered.
+/// The rows each query typed on the way to the last one matched, with
+/// their scores, by index into the catalog it filtered.
 ///
 /// A row matches when every term of the query is found in it, in order, and
 /// a query that only grows -- typing on -- can only lengthen a term or add
 /// one: a term found in a row is found there without its last characters
 /// too, and a term matched case-sensitively is matched folded as well. So the
 /// rows a longer query matches are among the ones its prefix did, and only
-/// those need scoring again. Kept by the picker, and forgotten with its
-/// catalog.
+/// those need scoring again. And a query deleted back to one typed on the
+/// way matches what it matched then: the catalog has not changed. Kept by
+/// the picker, and forgotten with its catalog.
 #[derive(Default)]
 pub struct Narrowing {
-    query: String,
-    matched: Vec<usize>,
+    /// Each query a prefix of the next.
+    steps: Vec<Step>,
 }
 
-/// `filter_catalog`, scoring only the rows `last` says can still match, and
-/// leaving in `last` what this query matched.
+struct Step {
+    query: String,
+    /// Every row the query matched, with its score, in catalog order.
+    matched: Vec<(i64, usize)>,
+    /// The rows that made the list, in its order, and how long it was.
+    shown: Option<(usize, Vec<usize>)>,
+}
+
+/// `filter_catalog`, scoring only the rows `last` says can still match, or
+/// none when `last` has this query's matches already, and leaving in `last`
+/// what this query matched.
 pub fn filter_catalog_narrowing(catalog: &[Row], query: &str, limit: usize, last: &mut Narrowing) -> Vec<Scored> {
     let terms = terms_of(query);
     if terms.is_empty() {
         *last = Narrowing::default();
         return catalog.iter().take(limit).map(|item| Scored::plain(item.clone())).collect();
     }
-    let narrowed = !last.query.is_empty() && query.starts_with(last.query.as_str());
+    // Back to the longest query typed on the way here that this one extends.
+    while last.steps.last().is_some_and(|step| !query.starts_with(step.query.as_str())) {
+        last.steps.pop();
+    }
     // Every match is scored, but only the rows that make the list are
     // matched again for their positions. Paths are unique in a catalog, so
     // the order is total and the rows that make it are the same either way.
-    let mut found: Vec<(i64, usize)> = Vec::new();
-    let mut consider = |index: usize| {
-        if let Some(total) = score_only(&catalog[index], &terms) {
-            found.push((total, index));
+    let step = match last.steps.pop() {
+        Some(step) if step.query == query => step,
+        before => {
+            let score_of = |index: usize| score_only(&catalog[index], &terms).map(|total| (total, index));
+            let matched: Vec<(i64, usize)> = match &before {
+                Some(step) => step.matched.iter().filter_map(|&(_, index)| score_of(index)).collect(),
+                None => (0..catalog.len()).filter_map(score_of).collect(),
+            };
+            last.steps.extend(before);
+            Step { query: query.to_string(), matched, shown: None }
         }
     };
-    if narrowed {
-        last.matched.iter().for_each(|&index| consider(index));
-    } else {
-        (0..catalog.len()).for_each(consider);
-    }
-    *last = Narrowing { query: query.to_string(), matched: found.iter().map(|&(_, index)| index).collect() };
-    let order = |a: &(i64, usize), b: &(i64, usize)| {
-        let (first, second) = (&catalog[a.1], &catalog[b.1]);
-        b.0.cmp(&a.0)
-            .then_with(|| rank(first.source).cmp(&rank(second.source)))
-            .then_with(|| first.path.cmp(&second.path))
-    };
+    last.steps.push(step);
+    let Some(step) = last.steps.last_mut() else { return Vec::new() };
     if limit == 0 {
         return Vec::new();
     }
-    if found.len() > limit {
-        found.select_nth_unstable_by(limit - 1, order);
-        found.truncate(limit);
-    }
-    found.sort_by(order);
-    found.into_iter().filter_map(|(_, index)| score(&catalog[index], &terms)).collect()
+    let shown = match &step.shown {
+        Some((length, shown)) if *length == limit => shown.clone(),
+        _ => {
+            let order = |a: &(i64, usize), b: &(i64, usize)| {
+                let (first, second) = (&catalog[a.1], &catalog[b.1]);
+                b.0.cmp(&a.0)
+                    .then_with(|| rank(first.source).cmp(&rank(second.source)))
+                    .then_with(|| first.path.cmp(&second.path))
+            };
+            let mut found = step.matched.clone();
+            if found.len() > limit {
+                found.select_nth_unstable_by(limit - 1, order);
+                found.truncate(limit);
+            }
+            found.sort_by(order);
+            let shown: Vec<usize> = found.into_iter().map(|(_, index)| index).collect();
+            step.shown = Some((limit, shown.clone()));
+            shown
+        }
+    };
+    shown.into_iter().filter_map(|index| score(&catalog[index], &terms)).collect()
 }
 
 /// Real subdirectories matching a path query, shell-order first.
