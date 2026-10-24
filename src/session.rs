@@ -159,8 +159,6 @@ pub fn space_folders(snapshot: &Value) -> SpaceMap {
     let by_id: HashMap<String, Space> =
         spaces(snapshot).into_iter().map(|space| (space.workspace_id.clone(), space)).collect();
     let mut found = SpaceMap::default();
-    let panes = list(snapshot, "panes").iter().filter(|raw| raw.as_dict().is_some());
-    resolve_ahead(panes.filter_map(|raw| nonempty_str(raw.get("cwd"))));
     for raw in list(snapshot, "panes") {
         if raw.as_dict().is_none() {
             continue;
@@ -301,9 +299,7 @@ pub fn folder_agents(snapshot: &Value) -> HashMap<String, Vec<FolderAgent>> {
 pub fn folder_statuses_and_agents(snapshot: &Value) -> (HashMap<String, String>, HashMap<String, Vec<FolderAgent>>) {
     let mut statuses: HashMap<String, String> = HashMap::new();
     let mut agents: HashMap<String, Vec<FolderAgent>> = HashMap::new();
-    let records = agent_records(snapshot);
-    resolve_ahead(records.iter().map(|(_, cwd, _)| cwd.as_str()));
-    for (raw, cwd, status) in records {
+    for (raw, cwd, status) in agent_records(snapshot) {
         let keys = folder_keys(&cwd);
         if !status.is_empty() {
             for key in &keys {
@@ -409,49 +405,10 @@ pub fn resolved(path: &str) -> String {
         return found;
     }
     let real = REAL.with(|known| pyos::realpath_with(&folder, &mut known.borrow_mut()));
-    let found = trimmed_real(&real);
+    let trimmed = real.trim_end_matches('/');
+    let found = if trimmed.is_empty() { "/".to_string() } else { trimmed.to_string() };
     RESOLVED.with(|cache| cache.borrow_mut().insert(folder, found.clone()));
     found
-}
-
-/// `resolved` of every folder not seen yet, all at once: on all cores when
-/// there are enough of them, since the first sight of a folder costs a
-/// lstat for each part of its path that is not known yet, and a session
-/// can have hundreds. Remembered as `resolved` remembers them.
-fn resolve_ahead<'a>(paths: impl Iterator<Item = &'a str>) {
-    let mut wanted: Vec<String> = paths.map(normalize).filter(|folder| !folder.is_empty()).collect();
-    wanted.sort_unstable();
-    wanted.dedup();
-    RESOLVED.with(|cache| {
-        let cache = cache.borrow();
-        wanted.retain(|folder| !cache.contains_key(folder));
-    });
-    if wanted.len() < crate::paths::STAT_PARALLEL {
-        return; // one by one as they are asked, sharing what each finds
-    }
-    let found: Vec<String> = crate::lookups::ask_many(wanted.len(), || {
-        crate::par::map_chunks_from(&wanted, crate::paths::STAT_PARALLEL, |chunk| {
-            let mut real = HashSet::new();
-            chunk.iter().map(|folder| pyos::realpath_with(folder, &mut real)).collect()
-        })
-    });
-    RESOLVED.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        for (folder, real) in wanted.into_iter().zip(found) {
-            cache.insert(folder, trimmed_real(&real));
-        }
-    });
-}
-
-/// A followed path as `resolved` keeps it: no trailing separator, except
-/// the root's own.
-fn trimmed_real(real: &str) -> String {
-    let trimmed = real.trim_end_matches('/');
-    if trimmed.is_empty() {
-        "/".to_string()
-    } else {
-        trimmed.to_string()
-    }
 }
 
 /// Forget every followed symlink, so the next question is asked afresh.

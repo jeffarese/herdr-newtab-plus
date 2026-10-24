@@ -282,7 +282,7 @@ fn git_inside(dir: Option<&std::fs::File>, directory: &str, name: &str) -> bool 
 /// Below this many paths, asking the filesystem on one thread is quicker
 /// than starting more. A stat costs microseconds, far more than a row's
 /// scoring, so the bar is lower than `par::MIN_PARALLEL`.
-pub(crate) const STAT_PARALLEL: usize = 64;
+const STAT_PARALLEL: usize = 64;
 
 /// Every root's listing, read on whichever thread calls it, for
 /// `seed_listings` to hand to the picker's thread. The startup reads them

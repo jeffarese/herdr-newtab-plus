@@ -470,6 +470,15 @@ fn resolving_with_a_shared_cache_answers_as_resolving_afresh() {
         "real/inner/../inner/deep",
         "link/../other",
         "relative/../../other",
+        // Beside a folder already followed: a missing leaf, a symlink leaf,
+        // and spellings the one-lstat answer must leave to the walk.
+        "real/missing-leaf",
+        "real/inner/missing/leaf",
+        "real/up",
+        "real/inner/deep/",
+        "real//inner",
+        "real/./inner",
+        "other",
     ]
     .iter()
     .map(|p| format!("{root}/{p}"))
@@ -486,53 +495,4 @@ fn resolving_with_a_shared_cache_answers_as_resolving_afresh() {
     for path in paths.iter().rev() {
         assert_eq!(pyos::realpath_with(path, &mut reversed), pyos::realpath(path), "{path}");
     }
-}
-
-/// A session with enough panes has its folders followed on all cores ahead
-/// of the space map. Whatever the spellings -- symlinks, a chain of them, a
-/// trailing slash, a folder that is gone -- the map is the one made by
-/// following each folder in turn.
-#[test]
-fn folders_followed_ahead_make_the_map_followed_in_turn() {
-    let tree = TempDir::new();
-    let mut cwds: Vec<String> = Vec::new();
-    for index in 0..80 {
-        let folder = tree.join(&format!("real/project-{index:02}"));
-        std::fs::create_dir_all(&folder).unwrap();
-        cwds.push(match index % 4 {
-            0 => folder,
-            1 => {
-                let link = tree.join(&format!("link-{index:02}"));
-                symlink(&folder, &link).unwrap();
-                link
-            }
-            2 => format!("{folder}/"),
-            _ => tree.join(&format!("gone/project-{index:02}")),
-        });
-    }
-    symlink(tree.join("real"), tree.join("via")).unwrap();
-    symlink(tree.join("via"), tree.join("via-via")).unwrap();
-    cwds.push(tree.join("via-via/project-00"));
-    let spaces =
-        (1..4).map(|index| space(&format!("w{index}"), &format!("space-{index}"), index, index == 1)).collect();
-    let panes = cwds
-        .iter()
-        .enumerate()
-        .map(|(index, cwd)| pane(&format!("w{}:p{index}", index % 3 + 1), cwd, &format!("w{}", index % 3 + 1)));
-    let snap = snapshot(panes.collect(), Some(spaces));
-    let entries = |map: &crate::session::SpaceMap| -> Vec<(String, String)> {
-        map.iter().map(|(key, space)| (key.clone(), space.workspace_id.clone())).collect()
-    };
-
-    clear_resolved();
-    let ahead = entries(&space_folders(&snap));
-    clear_resolved();
-    for cwd in &cwds {
-        resolved(cwd);
-    }
-    let in_turn = entries(&space_folders(&snap));
-    clear_resolved();
-    assert_eq!(ahead, in_turn);
-    assert!(ahead.iter().any(|(key, _)| key.ends_with("/real/project-01")), "a link is followed: {ahead:?}");
-    assert!(ahead.iter().any(|(key, _)| key.ends_with("/gone/project-03")), "a gone folder keeps its spelling");
 }

@@ -222,9 +222,40 @@ pub fn realpath_with(path: &str, real: &mut std::collections::HashSet<String>) -
 }
 
 fn realpath_uncounted(path: &str, real: &mut std::collections::HashSet<String>) -> String {
+    if let Some(found) = realpath_beside_known(path, real) {
+        return found;
+    }
     let mut seen: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
     let (resolved, _) = join_realpath(String::new(), path, &mut seen, real);
     abspath(&resolved)
+}
+
+/// `realpath` of a plain absolute path whose parent `real` already holds,
+/// without walking the components that answer is made of: everything in
+/// `real` was followed to the end and is no symlink, so only the last
+/// component is left to ask about. None when the walk is needed -- the
+/// parent is not known, the path is not plain, or its end is a symlink.
+fn realpath_beside_known(path: &str, real: &mut std::collections::HashSet<String>) -> Option<String> {
+    let rest = path.strip_prefix('/')?;
+    if rest.split('/').any(|name| name.is_empty() || name == "." || name == "..") {
+        return None;
+    }
+    if real.contains(path) {
+        return Some(path.to_string());
+    }
+    let (parent, _) = path.rsplit_once('/')?;
+    if !real.contains(if parent.is_empty() { "/" } else { parent }) {
+        return None;
+    }
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => None,
+        Ok(_) => {
+            real.insert(path.to_string());
+            Some(path.to_string())
+        }
+        // Missing, or not to be looked at: kept as written, as the walk keeps it.
+        Err(_) => Some(path.to_string()),
+    }
 }
 
 fn join_realpath(
