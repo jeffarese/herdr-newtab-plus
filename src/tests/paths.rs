@@ -361,6 +361,89 @@ fn pyos_rel(path: &str, base: &str) -> String {
     path.strip_prefix(base).map(|rest| rest.trim_start_matches('/').to_string()).unwrap_or_else(|| path.to_string())
 }
 
+/// The catalog filter as it first was: every row matched with its
+/// positions, all of them sorted, the list cut after. What the faster one
+/// is held to.
+fn every_row_scored(catalog: &[Row], query: &str, limit: usize) -> Vec<paths::Scored> {
+    let terms = paths::terms_of(query);
+    if terms.is_empty() {
+        return catalog.iter().take(limit).map(|item| paths::Scored::plain(item.clone())).collect();
+    }
+    let mut scored: Vec<paths::Scored> = catalog.iter().filter_map(|item| paths::score(item, &terms)).collect();
+    scored.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then_with(|| paths::rank(a.suggestion.source).cmp(&paths::rank(b.suggestion.source)))
+            .then_with(|| a.suggestion.path.cmp(&b.suggestion.path))
+    });
+    scored.truncate(limit);
+    scored
+}
+
+/// Typing on scores only the rows the shorter query matched. Whatever is
+/// typed -- on, back, a space, a quote, a capital, a character that folds --
+/// every step must show the rows a filter of the whole catalog shows, with
+/// the same scores and highlights.
+#[test]
+fn narrowing_from_the_last_query_filters_as_the_whole_catalog_does() {
+    let names = [
+        "herdr-bar",
+        "herdr-newtab-plus",
+        "Herdr-Radar",
+        "HERDR",
+        "web-relay",
+        "Webhook",
+        "café-ledger",
+        "CAFÉ",
+        "İstanbul",
+        "istanbul",
+        "日本語",
+        "a b c",
+        "quote\"d",
+        "x-1",
+        "X1",
+        "notes",
+        "atlas",
+        "Atlas-Web",
+    ];
+    let catalog: Vec<Row> = names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| {
+            suggestion(&format!("/w/{}/{}", ["src", "Docs", "ab"][index % 3], name), name, SOURCE_ROOT)
+        })
+        .collect();
+    let rows = |found: &[paths::Scored]| -> Vec<(String, i64, Vec<usize>, Vec<usize>)> {
+        found
+            .iter()
+            .map(|row| (row.suggestion.name.clone(), row.score, row.name_positions.clone(), row.path_positions.clone()))
+            .collect()
+    };
+    let alphabet: Vec<char> = "herdabwX1 \"'Iİíé日-".chars().collect();
+    let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+    let mut next = |below: usize| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed % below as u64) as usize
+    };
+    for _ in 0..300 {
+        let mut last = paths::Narrowing::default();
+        let mut query = String::new();
+        for _ in 0..12 {
+            if !query.is_empty() && next(4) == 0 {
+                query.pop();
+            } else {
+                query.push(alphabet[next(alphabet.len())]);
+            }
+            let narrowed = paths::filter_catalog_narrowing(&catalog, &query, 5, &mut last);
+            let reference = rows(&every_row_scored(&catalog, &query, 5));
+            assert_eq!(rows(&narrowed), reference, "{query:?}");
+            assert_eq!(rows(&filter_catalog(&catalog, &query, 5)), reference, "{query:?}");
+        }
+    }
+}
+
 // -- FilterTest ---------------------------------------------------------------
 
 fn filter_fixture() -> Vec<Row> {

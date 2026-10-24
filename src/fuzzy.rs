@@ -17,7 +17,7 @@ pub const BONUS_FIRST_CHAR_MULTIPLIER: i64 = 2;
 pub const PENALTY_GAP_START: i64 = -3;
 pub const PENALTY_GAP_EXTENSION: i64 = -1;
 
-const NEG: i64 = -1_000_000_000;
+const NEG: i32 = -1_000_000_000;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Match {
@@ -197,15 +197,31 @@ pub fn match_text(query: &str, text: &str) -> Option<Match> {
 }
 
 pub fn match_prepared(term: &Term, field: &Prepared) -> Option<Match> {
+    best_alignment::<true>(term, field).map(|(score, positions)| Match { score, positions })
+}
+
+/// `match_prepared`'s score alone. Scoring a whole list only needs the
+/// positions of the rows that make it, and following them back is half the
+/// work of each match: the parent of every cell, then the walk.
+pub fn score_prepared(term: &Term, field: &Prepared) -> Option<i64> {
+    best_alignment::<false>(term, field).map(|(score, _)| score)
+}
+
+/// The best alignment of `term` in `field`: its score, and with `POSITIONS`
+/// the characters it lands on.
+fn best_alignment<const POSITIONS: bool>(term: &Term, field: &Prepared) -> Option<(i64, Vec<usize>)> {
     let needle = &term.needle;
     if needle.is_empty() {
-        return Some(Match { score: 0, positions: Vec::new() });
+        return Some((0, Vec::new()));
     }
     if field.chars.is_empty() {
         return None;
     }
     let haystack = field.haystack(term.fold);
-    let bonus = |index: usize| field.bonus[index] as i64;
+    // Every score fits in 32 bits: a match is worth a few dozen, and a gap
+    // costs at most one a character. Half the width is half the memory the
+    // tables below are written through.
+    let bonus = |index: usize| field.bonus[index] as i32;
 
     // Cheap rejection before the DP: every query character must appear in order.
     let mut cursor = 0;
@@ -226,8 +242,10 @@ pub fn match_prepared(term: &Term, field: &Prepared) -> Option<Match> {
         let (scores, parents) = &mut *scratch;
         scores.clear();
         scores.resize(m * n, NEG);
-        parents.clear();
-        parents.resize(m * n, -1);
+        if POSITIONS {
+            parents.clear();
+            parents.resize(m * n, -1);
+        }
 
         let ceiling = high as isize - m as isize + 1;
         let mut at = Some(low);
@@ -235,7 +253,7 @@ pub fn match_prepared(term: &Term, field: &Prepared) -> Option<Match> {
             if (a as isize) > ceiling {
                 break;
             }
-            scores[a] = SCORE_MATCH + bonus(a) * BONUS_FIRST_CHAR_MULTIPLIER;
+            scores[a] = SCORE_MATCH as i32 + bonus(a) * BONUS_FIRST_CHAR_MULTIPLIER as i32;
             at = find(haystack, needle[0], a + 1);
         }
 
@@ -244,23 +262,22 @@ pub fn match_prepared(term: &Term, field: &Prepared) -> Option<Match> {
             let (done, rest) = scores.split_at_mut(j * n);
             let previous = &done[(j - 1) * n..];
             let row = &mut rest[..n];
-            let back = &mut parents[j * n..(j + 1) * n];
             let ceiling = high as isize - m as isize + 1 + j as isize;
             let mut carry = NEG;
-            let mut carry_from: isize = -1;
+            let mut carry_from: i32 = -1;
             let mut carry_gap = 0;
             let mut landed = false;
             let mut i = low as isize + 1;
             while i <= ceiling {
                 let iu = i as usize;
                 if carry > NEG {
-                    carry += if carry_gap == 0 { PENALTY_GAP_START } else { PENALTY_GAP_EXTENSION };
+                    carry += if carry_gap == 0 { PENALTY_GAP_START as i32 } else { PENALTY_GAP_EXTENSION as i32 };
                     carry_gap += 1;
                 }
                 let adjacent = previous[iu - 1];
                 if adjacent > NEG && adjacent >= carry {
                     carry = adjacent;
-                    carry_from = i - 1;
+                    carry_from = i as i32 - 1;
                     carry_gap = 0;
                 }
                 if carry == NEG || haystack[iu] != qchar {
@@ -268,11 +285,13 @@ pub fn match_prepared(term: &Term, field: &Prepared) -> Option<Match> {
                     continue;
                 }
                 let mut gained = bonus(iu);
-                if carry_gap == 0 && gained < BONUS_CONSECUTIVE {
-                    gained = BONUS_CONSECUTIVE;
+                if carry_gap == 0 && gained < BONUS_CONSECUTIVE as i32 {
+                    gained = BONUS_CONSECUTIVE as i32;
                 }
-                row[iu] = carry + SCORE_MATCH + gained;
-                back[iu] = carry_from;
+                row[iu] = carry + SCORE_MATCH as i32 + gained;
+                if POSITIONS {
+                    parents[j * n + iu] = carry_from;
+                }
                 landed = true;
                 i += 1;
             }
@@ -286,23 +305,26 @@ pub fn match_prepared(term: &Term, field: &Prepared) -> Option<Match> {
         if best == NEG {
             return None;
         }
+        if !POSITIONS {
+            return Some((best as i64, Vec::new()));
+        }
         let best_index = last.iter().position(|&s| s == best)?;
         let mut positions = Vec::with_capacity(m);
         let mut index = best_index as isize;
         for j in (0..m).rev() {
             positions.push(index as usize);
-            index = parents[j * n + index as usize];
+            index = parents[j * n + index as usize] as isize;
             if index < 0 {
                 break;
             }
         }
         positions.reverse();
-        Some(Match { score: last[best_index], positions })
+        Some((best as i64, positions))
     })
 }
 
 thread_local! {
-    static SCRATCH: RefCell<(Vec<i64>, Vec<isize>)> = const { RefCell::new((Vec::new(), Vec::new())) };
+    static SCRATCH: RefCell<(Vec<i32>, Vec<i32>)> = const { RefCell::new((Vec::new(), Vec::new())) };
 }
 
 #[cfg(test)]
@@ -315,6 +337,31 @@ mod tests {
         assert!(match_text("abd", "abc").is_none());
         assert_eq!(match_text("ws", "weekly sync").unwrap().positions, vec![0, 7]);
         assert_eq!(split_query("a 'b c' d"), vec!["a", "b c", "d"]);
+    }
+
+    /// The score alone is the score of the full match, on needles and
+    /// haystacks of every shape: folded or not, repeated characters, long
+    /// gaps, characters that fold to more than one.
+    #[test]
+    fn the_score_alone_is_the_full_matchs_score() {
+        let alphabet: Vec<char> = "abcAB-_/. İiéÉ日1".chars().collect();
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = |below: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % below as u64) as usize
+        };
+        let mut matched = 0;
+        for _ in 0..20_000 {
+            let text: String = (0..next(40)).map(|_| alphabet[next(alphabet.len())]).collect();
+            let query: String = (0..1 + next(4)).map(|_| alphabet[next(alphabet.len())]).collect();
+            let (term, field) = (Term::new(&query), Prepared::new(&text));
+            let full = match_prepared(&term, &field);
+            matched += full.is_some() as usize;
+            assert_eq!(score_prepared(&term, &field), full.map(|found| found.score), "{query:?} in {text:?}");
+        }
+        assert!(matched > 1000, "enough of them match to mean something: {matched}");
     }
 
     // Ported from the Python release's tests/test_fuzzy.py.

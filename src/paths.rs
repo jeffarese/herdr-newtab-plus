@@ -14,7 +14,7 @@
 //! Both produce the same row type, so the list does not change shape as you
 //! type your way from one into the other.
 
-use crate::fuzzy::{match_prepared, split_query, Match, Prepared, Term};
+use crate::fuzzy::{match_prepared, score_prepared, split_query, Match, Prepared, Term};
 use crate::fxhash::FxHashMap;
 #[cfg(test)]
 use crate::pyjson::Value;
@@ -932,24 +932,86 @@ pub fn score(suggestion: &Row, terms: &[Term]) -> Option<Scored> {
     })
 }
 
+/// `score`'s score alone, without the positions to highlight.
+fn score_only(suggestion: &Suggestion, terms: &[Term]) -> Option<i64> {
+    let (name_field, shown_field) = (suggestion.name_field(), suggestion.shown_field());
+    let mut total = 0i64;
+    for term in terms {
+        let name = score_prepared(term, name_field).map(|score| score + NAME_BONUS);
+        let path = score_prepared(term, shown_field);
+        total += match (name, path) {
+            (None, None) => return None,
+            (Some(name), path) if path.is_none() || name >= path.unwrap() => name,
+            (_, Some(path)) => path,
+            _ => unreachable!(),
+        };
+    }
+    Some(total)
+}
+
 pub fn terms_of(query: &str) -> Vec<Term> {
     split_query(query).iter().map(|term| Term::new(term)).collect()
 }
 
+#[cfg(test)]
 pub fn filter_catalog(catalog: &[Row], query: &str, limit: usize) -> Vec<Scored> {
+    filter_catalog_narrowing(catalog, query, limit, &mut Narrowing::default())
+}
+
+/// The rows the last query matched, by index into the catalog it filtered.
+///
+/// A row matches when every term of the query is found in it, in order, and
+/// a query that only grows -- typing on -- can only lengthen a term or add
+/// one: a term found in a row is found there without its last characters
+/// too, and a term matched case-sensitively is matched folded as well. So the
+/// rows a longer query matches are among the ones its prefix did, and only
+/// those need scoring again. Kept by the picker, and forgotten with its
+/// catalog.
+#[derive(Default)]
+pub struct Narrowing {
+    query: String,
+    matched: Vec<usize>,
+}
+
+/// `filter_catalog`, scoring only the rows `last` says can still match, and
+/// leaving in `last` what this query matched.
+pub fn filter_catalog_narrowing(catalog: &[Row], query: &str, limit: usize, last: &mut Narrowing) -> Vec<Scored> {
     let terms = terms_of(query);
     if terms.is_empty() {
+        *last = Narrowing::default();
         return catalog.iter().take(limit).map(|item| Scored::plain(item.clone())).collect();
     }
-    let mut scored: Vec<Scored> = catalog.iter().filter_map(|item| score(item, &terms)).collect();
-    scored.sort_by(|a, b| {
-        b.score
-            .cmp(&a.score)
-            .then_with(|| rank(a.suggestion.source).cmp(&rank(b.suggestion.source)))
-            .then_with(|| a.suggestion.path.cmp(&b.suggestion.path))
-    });
-    scored.truncate(limit);
-    scored
+    let narrowed = !last.query.is_empty() && query.starts_with(last.query.as_str());
+    // Every match is scored, but only the rows that make the list are
+    // matched again for their positions. Paths are unique in a catalog, so
+    // the order is total and the rows that make it are the same either way.
+    let mut found: Vec<(i64, usize)> = Vec::new();
+    let mut consider = |index: usize| {
+        if let Some(total) = score_only(&catalog[index], &terms) {
+            found.push((total, index));
+        }
+    };
+    if narrowed {
+        last.matched.iter().for_each(|&index| consider(index));
+    } else {
+        (0..catalog.len()).for_each(consider);
+    }
+    *last = Narrowing { query: query.to_string(), matched: found.iter().map(|&(_, index)| index).collect() };
+    let order = |a: &(i64, usize), b: &(i64, usize)| {
+        let (first, second) = (&catalog[a.1], &catalog[b.1]);
+        b.0.cmp(&a.0)
+            .then_with(|| rank(first.source).cmp(&rank(second.source)))
+            .then_with(|| first.path.cmp(&second.path))
+    };
+    if limit == 0 {
+        return Vec::new();
+    }
+    if found.len() > limit {
+        found.select_nth_unstable_by(limit - 1, order);
+        found.truncate(limit);
+    }
+    found.sort_by(order);
+    found.into_iter().filter_map(|(_, index)| score(&catalog[index], &terms)).collect()
 }
 
 /// Real subdirectories matching a path query, shell-order first.
@@ -1015,11 +1077,25 @@ pub fn complete_path(query: &str, base: &str, hidden: bool, limit: usize) -> Vec
     rows
 }
 
+#[cfg(test)]
 pub fn suggest(query: &str, catalog: &[Row], base: &str, hidden: bool, limit: usize) -> Vec<Scored> {
+    suggest_narrowing(query, catalog, base, hidden, limit, &mut Narrowing::default())
+}
+
+/// `suggest`, narrowing a catalog query from the last one as
+/// `filter_catalog_narrowing` does.
+pub fn suggest_narrowing(
+    query: &str,
+    catalog: &[Row],
+    base: &str,
+    hidden: bool,
+    limit: usize,
+    last: &mut Narrowing,
+) -> Vec<Scored> {
     if looks_like_path(query) {
         return complete_path(query, base, hidden, limit);
     }
-    filter_catalog(catalog, query, limit)
+    filter_catalog_narrowing(catalog, query, limit, last)
 }
 
 // -- inline completion -----------------------------------------------------

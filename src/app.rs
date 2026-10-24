@@ -68,6 +68,8 @@ pub struct Picker {
     /// In characters, as the Python release counted it.
     pub cursor: usize,
     pub rows: Vec<Scored>,
+    /// What the last catalog query matched, for the next one to narrow.
+    narrowing: paths::Narrowing,
     pub selected: usize,
     pub offset: usize,
     pub chip: usize,
@@ -138,6 +140,7 @@ impl Picker {
             query: String::new(),
             cursor: 0,
             rows: Vec::new(),
+            narrowing: paths::Narrowing::default(),
             selected: 0,
             offset: 0,
             chip,
@@ -171,6 +174,7 @@ impl Picker {
     /// has been typed yet, so the list is the resting one again.
     pub fn set_catalog(&mut self, catalog: Vec<Row>) {
         self.catalog = catalog;
+        self.narrowing = paths::Narrowing::default();
         self.chip = initial_index(&self.chips, &self.config.default_agent, self.recents.last_agent().as_deref());
         self.refilter(None);
     }
@@ -178,8 +182,14 @@ impl Picker {
     // -- derived state ------------------------------------------------------
 
     pub fn refilter(&mut self, keep: Option<&str>) {
-        self.rows =
-            paths::suggest(&self.query, &self.catalog, &self.base, self.config.hidden, self.config.max_suggestions);
+        self.rows = paths::suggest_narrowing(
+            &self.query,
+            &self.catalog,
+            &self.base,
+            self.config.hidden,
+            self.config.max_suggestions,
+            &mut self.narrowing,
+        );
         self.selected = 0;
         if let Some(keep) = keep.filter(|k| !k.is_empty()) {
             if let Some(index) = self.rows.iter().position(|row| row.suggestion.path == keep) {
@@ -476,6 +486,7 @@ impl Picker {
             "ctrl+o" => self.toggle_preview(),
             "ctrl+r" => {
                 paths::clear_cache();
+                self.narrowing = paths::Narrowing::default();
                 self.target_spaces = space_folders(&self.snapshot);
                 let folder = self.folder();
                 self.refilter(Some(&folder));
