@@ -1,6 +1,6 @@
 id = "herdr-newtab-plus"
 name = "New Tab Plus"
-version = "0.2.0"
+version = "0.2.1"
 # 0.7.4 is the first release with session-modal popup plugin panes. The picker
 # also needs `session.snapshot` (0.7.2) to infer which folders already have a
 # space open.

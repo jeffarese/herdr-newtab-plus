@@ -320,31 +320,45 @@ colour, and a hint nobody can read might as well not be there.
 
 The popup opens on a keypress and closes a few keystrokes later, so what
 matters is how soon the first frame appears and how quickly each keystroke
-shows. The numbers below come from the same black-box bench run against both
-releases: the real binary on a pseudo-terminal against a fake Herdr, on an
+shows. The numbers below come from the same black-box bench run against every
+release: the real binary on a pseudo-terminal against a fake Herdr, on an
 M-series Mac. The large workload has 4,000 folders under the roots, 200 panes
 open, 80 recents and 400 zoxide entries.
 
-| | Python 0.1 | Rust 0.2 | |
-| --- | ---: | ---: | ---: |
-| first frame, 12 folders | 56.8 ms | 3.4 ms | **17×** |
-| first frame, 400 folders | 67.2 ms | 11.3 ms | **5.9×** |
-| first frame, 4,000 folders | 89.6 ms | 13.7 ms | **6.6×** |
-| keystroke, 4,000 folders (median) | 34.9 ms | 0.84 ms | **42×** |
-| keystroke, 4,000 folders (p99) | 45.2 ms | 3.2 ms | **14×** |
-| moving the selection (median) | 1.3 ms | 0.23 ms | **5.7×** |
-| Enter to the agent starting | 49.2 ms | 3.8 ms | **13×** |
-| CPU per session, 4,000 folders | 429 ms | 54 ms | **8×** |
-| peak memory, 4,000 folders | 27 MB | 12 MB | **2.3×** |
-| `--version` | 41.8 ms | 1.9 ms | **22×** |
+| | Python 0.1 | Rust 0.2.0 | Rust 0.2.1 | |
+| --- | ---: | ---: | ---: | ---: |
+| first frame, 12 folders | 56.7 ms | 3.5 ms | 3.5 ms | **16×** |
+| first frame, 400 folders | 67.2 ms | 12.3 ms | 4.7 ms | **14×** |
+| first frame, 4,000 folders | 89.6 ms | 14.0 ms | 5.3 ms | **17×** |
+| keystroke, 4,000 folders (median) | 34.9 ms | 0.85 ms | 0.58 ms | **60×** |
+| keystroke, 4,000 folders (p99) | 45.2 ms | 3.1 ms | 2.8 ms | **16×** |
+| typing a path into 4,000 folders (median) | 4.4 ms | 0.85 ms | 0.23 ms | **19×** |
+| the keystroke that lists those 4,000 | 11.4 ms | 2.4 ms | 0.31 ms | **37×** |
+| moving the selection (median) | 1.3 ms | 0.26 ms | 0.27 ms | **4.8×** |
+| Enter to the agent starting | 49.2 ms | 3.7 ms | 3.8 ms | **13×** |
+| CPU per session, 4,000 folders | 429 ms | 55 ms | 39 ms | **11×** |
+| peak memory, 4,000 folders | 27 MB | 13 MB | 9.0 MB | **3.0×** |
+| `--version` | 41.8 ms | 1.9 ms | 2.2 ms | **19×** |
 
-Each column is a saved run in [`bench/`](bench/): 24 sessions per workload
-for Rust, and 12 for the Python 0.1 release, measured the same way before the
-port.
+The last column is 0.2.1 against Python 0.1. Each column is a saved run in
+[`bench/`](bench/): 24 sessions per workload for Rust, and 12 for the Python
+0.1 release, measured the same way before the port. The two Rust runs were
+recorded back to back, but the machine was not idle: differences of a few
+hundredths of a millisecond, and in the p99s, are noise. The gains 0.2.1
+claims were each measured by running the two builds interleaved, round by
+round.
+
+In 0.2.1 the first frame no longer waits for zoxide when zoxide's rows cannot
+reach the screen, which is most of the 400- and 4,000-folder gain. A keystroke
+scores only the rows its prefix matched, positions only the rows it shows, and
+deleting a character reuses what the shorter query found. Typing a path into a
+big folder stops once the list is full, and its preview reuses the listing's
+own read.
 
 Bytes written to the terminal are identical: the Rust picker draws the same
 screens with the same diffs. Startup is close to the floor of starting any
-process; most of what is left is zoxide and Herdr answering.
+process; most of what is left is Herdr answering, and zoxide when its rows
+could reach the first screen.
 
 Some costs are properties of the code rather than the machine, so the tests
 hold them fixed on every push:
@@ -361,13 +375,15 @@ hold them fixed on every push:
 The picker is one short-lived process in a Herdr popup pane. It reads the whole
 session in a single `session.snapshot` call over Herdr's socket, and while
 Herdr answers it reads zoxide, the roots and the agents installed on PATH on
-threads of its own. When you press Enter it creates the tab or space before the
-popup closes. The agent, which Herdr waits on until it is ready for input, is
-handed to a detached child that waits out the new shell's startup files before
-starting it; failures land in `agent-start.log` in the plugin's state
-directory. Symlinks are followed when comparing folders, since a shell reports
-its working directory resolved, but the folder handed to Herdr is the one you
-picked.
+threads of its own. zoxide's rows come after the recents and the open spaces,
+so when those fill the screen and the list is full without zoxide, the first
+frame is drawn without waiting for it, and the list is finished before a key is
+read. When you press Enter it creates the tab or space before the popup closes.
+The agent, which Herdr waits on until it is ready for input, is handed to a
+detached child that waits out the new shell's startup files before starting it;
+failures land in `agent-start.log` in the plugin's state directory. Symlinks
+are followed when comparing folders, since a shell reports its working
+directory resolved, but the folder handed to Herdr is the one you picked.
 
 ## Development
 
@@ -389,7 +405,7 @@ that release did. `tests/parity.rs` drives the binary on a pseudo-terminal
 against a fake Herdr, in a synthetic home with fake agents and a fake zoxide,
 and compares every screen, every Herdr request and every state file with
 transcripts recorded from the Python release (`tests/parity/golden.json`) in
-106 scenarios. None of it needs a Herdr server. When a UI change is intended,
+109 scenarios. None of it needs a Herdr server. When a UI change is intended,
 bless the golden and review its diff.
 
 `cargo test` also holds the per-frame costs above (`src/tests/bench.rs`). The

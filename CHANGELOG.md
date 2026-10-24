@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.1
+
+Faster, with the same screens, keys and state files: the parity suite still
+holds every screen, Herdr request and state file to the Python release, now in
+109 scenarios. With 4,000 folders, 200 panes and zoxide:
+
+- The first frame shows in about 5 ms instead of 14 (and at 400 folders, 4.7
+  instead of 12). zoxide's rows come after the recents and the open spaces, so
+  when those fill the screen and the list is full without zoxide, the picker
+  draws the first frame without waiting for it, then finishes the list before
+  it reads a key. The root rows are built, and the appearance query and theme
+  read, while zoxide is still answering.
+- A big session's maps are set up faster: the agents and statuses come from one
+  walk of the snapshot, a folder that already has a space is asked only for its
+  `.git`, and following a folder beside one already followed costs one `lstat`.
+  On macOS a root's `.git` checks run on one thread, since lookups in one
+  directory contend in the kernel there and more threads only wait on each
+  other.
+- A keystroke takes 0.58 ms instead of 0.85. Each row is scored once, without
+  the positions to highlight, and only the 200 rows the list shows are matched
+  again for them. Typing on scores only the rows the shorter query matched,
+  and deleting a character reuses what the shorter query found instead of
+  scoring the whole catalog again.
+- Typing a path into a big folder takes 0.23 ms a keystroke instead of 0.85,
+  and the keystroke that lists it 0.31 ms instead of 2.4. The listing stops
+  once the list is full, and the folder's preview is put together from the
+  listing's own read rather than read a second time.
+- A session uses 39 ms of CPU instead of 55, and 9 MB of memory at its peak
+  instead of 13.
+
 ## 0.2.0
 
 - The picker is a native binary, written in Rust, and no longer needs Python.
