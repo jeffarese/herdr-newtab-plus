@@ -159,6 +159,8 @@ pub fn space_folders(snapshot: &Value) -> SpaceMap {
     let by_id: HashMap<String, Space> =
         spaces(snapshot).into_iter().map(|space| (space.workspace_id.clone(), space)).collect();
     let mut found = SpaceMap::default();
+    let panes = list(snapshot, "panes").iter().filter(|raw| raw.as_dict().is_some());
+    resolve_ahead(panes.filter_map(|raw| nonempty_str(raw.get("cwd"))));
     for raw in list(snapshot, "panes") {
         if raw.as_dict().is_none() {
             continue;
@@ -227,11 +229,12 @@ fn agent_records(snapshot: &Value) -> Vec<(&Value, String, String)> {
     }
 
     let agents: Vec<&Value> = list(snapshot, "agents").iter().filter(|raw| raw.as_dict().is_some()).collect();
-    let claimed: Vec<&Value> = agents.iter().map(|raw| raw.get("pane_id")).collect();
+    // A pane is claimed by an agent whose pane_id equals it, and only a
+    // string equals a string.
+    let claimed: crate::fxhash::FxHashSet<&str> = agents.iter().filter_map(|raw| raw.get("pane_id").as_str()).collect();
     let mut records: Vec<&Value> = agents.clone();
     for (pane_id, pane) in &panes {
-        let id = Value::str(*pane_id);
-        if claimed.iter().any(|value| py_eq(value, &id)) {
+        if claimed.contains(pane_id) {
             continue;
         }
         if pane.get("agent_status").truthy() || pane.get("agent").truthy() {
@@ -282,40 +285,48 @@ fn folder_keys(cwd: &str) -> Vec<String> {
 }
 
 /// Every folder an agent is standing in, mapped to its most urgent status.
+#[cfg(test)]
 pub fn folder_statuses(snapshot: &Value) -> HashMap<String, String> {
-    let mut found: HashMap<String, String> = HashMap::new();
-    for (_, cwd, status) in agent_records(snapshot) {
-        if status.is_empty() {
-            continue;
-        }
-        for key in folder_keys(&cwd) {
-            let replace = match found.get(&key) {
-                None => true,
-                Some(current) => rank(&status) < rank(current),
-            };
-            if replace {
-                found.insert(key, status.clone());
-            }
-        }
-    }
-    found
+    folder_statuses_and_agents(snapshot).0
 }
 
 /// Every folder an agent is standing in, mapped to all of them, most urgent first.
+#[cfg(test)]
 pub fn folder_agents(snapshot: &Value) -> HashMap<String, Vec<FolderAgent>> {
-    let mut found: HashMap<String, Vec<FolderAgent>> = HashMap::new();
-    for (raw, cwd, status) in agent_records(snapshot) {
+    folder_statuses_and_agents(snapshot).1
+}
+
+/// `folder_statuses` and `folder_agents`, from one walk of the agents: the
+/// picker wants both of every snapshot.
+pub fn folder_statuses_and_agents(snapshot: &Value) -> (HashMap<String, String>, HashMap<String, Vec<FolderAgent>>) {
+    let mut statuses: HashMap<String, String> = HashMap::new();
+    let mut agents: HashMap<String, Vec<FolderAgent>> = HashMap::new();
+    let records = agent_records(snapshot);
+    resolve_ahead(records.iter().map(|(_, cwd, _)| cwd.as_str()));
+    for (raw, cwd, status) in records {
+        let keys = folder_keys(&cwd);
+        if !status.is_empty() {
+            for key in &keys {
+                let replace = match statuses.get(key) {
+                    None => true,
+                    Some(current) => rank(&status) < rank(current),
+                };
+                if replace {
+                    statuses.insert(key.clone(), status.clone());
+                }
+            }
+        }
         let kind = raw.get("agent").as_str().unwrap_or("").to_string();
         let name = nonempty_str(raw.get("name")).map(|n| n.to_string()).unwrap_or_else(|| kind.clone());
         let agent = FolderAgent { kind, name, status };
-        for key in folder_keys(&cwd) {
-            found.entry(key).or_default().push(agent.clone());
+        for key in keys {
+            agents.entry(key).or_default().push(agent.clone());
         }
     }
-    for agents in found.values_mut() {
-        agents.sort_by_key(|agent| rank(&agent.status));
+    for found in agents.values_mut() {
+        found.sort_by_key(|agent| rank(&agent.status));
     }
-    found
+    (statuses, agents)
 }
 
 /// Names already taken by live agents, so a new one can avoid them.
@@ -398,10 +409,49 @@ pub fn resolved(path: &str) -> String {
         return found;
     }
     let real = REAL.with(|known| pyos::realpath_with(&folder, &mut known.borrow_mut()));
-    let trimmed = real.trim_end_matches('/');
-    let found = if trimmed.is_empty() { "/".to_string() } else { trimmed.to_string() };
+    let found = trimmed_real(&real);
     RESOLVED.with(|cache| cache.borrow_mut().insert(folder, found.clone()));
     found
+}
+
+/// `resolved` of every folder not seen yet, all at once: on all cores when
+/// there are enough of them, since the first sight of a folder costs a
+/// lstat for each part of its path that is not known yet, and a session
+/// can have hundreds. Remembered as `resolved` remembers them.
+fn resolve_ahead<'a>(paths: impl Iterator<Item = &'a str>) {
+    let mut wanted: Vec<String> = paths.map(normalize).filter(|folder| !folder.is_empty()).collect();
+    wanted.sort_unstable();
+    wanted.dedup();
+    RESOLVED.with(|cache| {
+        let cache = cache.borrow();
+        wanted.retain(|folder| !cache.contains_key(folder));
+    });
+    if wanted.len() < crate::paths::STAT_PARALLEL {
+        return; // one by one as they are asked, sharing what each finds
+    }
+    let found: Vec<String> = crate::lookups::ask_many(wanted.len(), || {
+        crate::par::map_chunks_from(&wanted, crate::paths::STAT_PARALLEL, |chunk| {
+            let mut real = HashSet::new();
+            chunk.iter().map(|folder| pyos::realpath_with(folder, &mut real)).collect()
+        })
+    });
+    RESOLVED.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        for (folder, real) in wanted.into_iter().zip(found) {
+            cache.insert(folder, trimmed_real(&real));
+        }
+    });
+}
+
+/// A followed path as `resolved` keeps it: no trailing separator, except
+/// the root's own.
+fn trimmed_real(real: &str) -> String {
+    let trimmed = real.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Forget every followed symlink, so the next question is asked afresh.

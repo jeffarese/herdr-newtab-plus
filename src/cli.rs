@@ -105,7 +105,7 @@ fn start_catalog(client: &mut HerdrClient, config: &Config, recents: &Recents) -
     let snapshot = client.snapshot()?;
     let owned = crate::session::space_folders(&snapshot);
     let open: Vec<String> = owned.iter().map(|(folder, _)| folder.clone()).collect();
-    let mut asked = paths::ask_dirs(&open);
+    let mut asked = paths::ask_gits(&open);
     asked.extend(recent_asked.join());
     Ok(Startup { snapshot, owned, recent, asked, disk, zoxide })
 }

@@ -54,7 +54,6 @@ impl Hasher for FxHasher {
 
 pub type FxBuild = BuildHasherDefault<FxHasher>;
 pub type FxHashMap<K, V> = HashMap<K, V, FxBuild>;
-#[allow(dead_code)]
 pub type FxHashSet<K> = HashSet<K, FxBuild>;
 
 #[cfg(test)]

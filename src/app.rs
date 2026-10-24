@@ -19,7 +19,7 @@ use crate::pyjson::Value;
 use crate::pystr;
 use crate::render::{self, Layout, Preview};
 use crate::session::{
-    folder_agents, folder_statuses, next_mode, normalize, resolve_target_with, resolved, space_folders, FolderAgent,
+    folder_statuses_and_agents, next_mode, normalize, resolve_target_with, resolved, space_folders, FolderAgent,
     SpaceMap, Target,
 };
 use crate::state::Recents;
@@ -123,8 +123,7 @@ impl Picker {
         let chip = initial_index(&chips, &config.default_agent, recents.last_agent().as_deref());
         let create_mode = recents.create_mode().unwrap_or(config.create);
         let row_agents = if config.default_agent == "last" { recents.agents() } else { HashMap::new() };
-        let statuses = folder_statuses(&snapshot);
-        let agents_in = folder_agents(&snapshot);
+        let (statuses, agents_in) = folder_statuses_and_agents(&snapshot);
         let spaces = space_folders(&snapshot);
         let target_spaces = spaces.clone();
         let preview_enabled = !config.preview.is_false();

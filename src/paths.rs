@@ -282,7 +282,7 @@ fn git_inside(dir: Option<&std::fs::File>, directory: &str, name: &str) -> bool 
 /// Below this many paths, asking the filesystem on one thread is quicker
 /// than starting more. A stat costs microseconds, far more than a row's
 /// scoring, so the bar is lower than `par::MIN_PARALLEL`.
-const STAT_PARALLEL: usize = 64;
+pub(crate) const STAT_PARALLEL: usize = 64;
 
 /// Every root's listing, read on whichever thread calls it, for
 /// `seed_listings` to hand to the picker's thread. The startup reads them
@@ -313,6 +313,19 @@ pub fn ask_dirs(paths: &[String]) -> FxHashMap<String, bool> {
         wanted.push(pyos::join(&folder, ".git"));
         wanted.push(folder);
     }
+    ask_all(wanted)
+}
+
+/// `isdir` of the `.git` inside every path, normalised: all the catalog
+/// asks of a folder that has a space, which is a row whether or not it is
+/// still there. Asked on all cores, on whichever thread calls it.
+pub fn ask_gits(paths: &[String]) -> FxHashMap<String, bool> {
+    let wanted = paths.iter().map(|path| normalize(path)).filter(|folder| !folder.is_empty());
+    ask_all(wanted.map(|folder| pyos::join(&folder, ".git")).collect())
+}
+
+/// `isdir` of every path in `wanted`, once each.
+fn ask_all(mut wanted: Vec<String>) -> FxHashMap<String, bool> {
     wanted.sort_unstable();
     wanted.dedup();
     let answers: Vec<bool> = crate::lookups::ask_many(wanted.len(), || {
@@ -610,9 +623,9 @@ impl<'a> CatalogBuilder<'a> {
 
     /// Folders picked recently, then every folder that has a space.
     pub fn add_recents_and_spaces(&mut self, recents: &[String]) {
-        let mut ahead: Vec<String> = recents.to_vec();
-        ahead.extend(self.owned.iter().map(|(folder, _)| folder.clone()));
-        self.ask_ahead(&ahead);
+        self.ask_ahead(recents);
+        let owned: Vec<String> = self.owned.iter().map(|(folder, _)| folder.clone()).collect();
+        self.ask_gits_ahead(&owned);
         for path in recents {
             if self.is_directory(&normalize(path)) {
                 self.add(path, SOURCE_RECENT, "", false, false);
@@ -749,6 +762,20 @@ impl<'a> CatalogBuilder<'a> {
             .cloned()
             .collect();
         self.asked.extend(ask_dirs(&missing));
+    }
+
+    /// Ask, all at once, whatever `ask_gits` would that is not known yet.
+    fn ask_gits_ahead(&mut self, paths: &[String]) {
+        let asked = &self.asked;
+        let missing: Vec<String> = paths
+            .iter()
+            .filter(|path| {
+                let folder = normalize(path);
+                !folder.is_empty() && !asked.contains_key(&pyos::join(&folder, ".git"))
+            })
+            .cloned()
+            .collect();
+        self.asked.extend(ask_gits(&missing));
     }
 
     /// `git_known` says `is_git` already answers whether `path/.git` is a
