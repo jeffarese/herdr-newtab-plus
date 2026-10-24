@@ -192,6 +192,15 @@ pub fn parent_display(path: &str) -> String {
 
 pub type Listing = Rc<Vec<(String, bool)>>;
 
+/// What a listing of a directory's folders left out, as (name, is a folder)
+/// in the order the directory was read: its files, and its hidden folders
+/// when those are not listed. With the listing, that is the whole directory.
+pub type Rest = Vec<(String, bool)>;
+
+/// A root read ahead by `prefetch_roots`: its listing, and what the listing
+/// left out when the whole directory was read cleanly.
+pub type Prefetched = (String, Vec<(String, bool)>, Option<Rest>);
+
 /// What is inside a folder, for the preview: names only, sorted, dot-files kept.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Contents {
@@ -207,8 +216,13 @@ pub struct Contents {
 // answers whether the folder exists -- the question every frame asks of the
 // folder Enter would use. So a folder the preview has listed is never stat-ed
 // again. `None` means it is not a directory at all.
+//
+// A directory listed for its folders was read whole, so what the listing
+// left out is kept beside it: previewing that directory then needs no second
+// read, which in a root of thousands of folders is most of a frame.
 thread_local! {
     static LISTINGS: RefCell<HashMap<(String, bool), Listing>> = RefCell::new(HashMap::new());
+    static RESTS: RefCell<HashMap<(String, bool), Rest>> = RefCell::new(HashMap::new());
     static CONTENTS: RefCell<HashMap<String, Option<Rc<Contents>>>> = RefCell::new(HashMap::new());
     static BRANCHES: RefCell<HashMap<String, Option<String>>> = RefCell::new(HashMap::new());
 }
@@ -231,22 +245,24 @@ pub fn isdir(path: &str) -> bool {
     crate::lookups::ask(|| !path.is_empty() && std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false))
 }
 
-fn scan_subdirectories(directory: &str, hidden: bool) -> Vec<(String, bool)> {
+/// The directory's folders as (name, is_git) pairs, sorted by name, and what
+/// the listing left out, when the directory was read without an error.
+fn scan_subdirectories(directory: &str, hidden: bool) -> (Vec<(String, bool)>, Option<Rest>) {
     let Ok(scan) = crate::lookups::ask(|| std::fs::read_dir(if directory.is_empty() { "\0" } else { directory }))
     else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
     let mut names: Vec<String> = Vec::new();
+    let mut rest: Rest = Vec::new();
     for entry in scan {
-        let Ok(entry) = entry else { return Vec::new() };
+        let Ok(entry) = entry else { return (Vec::new(), None) };
         let name = name_of(&entry);
-        if !hidden && name.starts_with('.') {
-            continue;
+        let is_dir = entry_is_dir(&entry);
+        if is_dir && (hidden || !name.starts_with('.')) {
+            names.push(name);
+        } else {
+            rest.push((name, is_dir));
         }
-        if !entry_is_dir(&entry) {
-            continue;
-        }
-        names.push(name);
     }
     // One stat per folder, for its .git: the bulk of a big root's cost, and
     // independent folder to folder. Each is resolved from the open directory
@@ -259,7 +275,7 @@ fn scan_subdirectories(directory: &str, hidden: bool) -> Vec<(String, bool)> {
     });
     let mut entries: Vec<(String, bool)> = names.into_iter().zip(gits).collect();
     entries.sort_by_cached_key(|(name, _)| pystr::lower(name));
-    entries
+    (entries, Some(rest))
 }
 
 /// `isdir(join(directory, name, ".git"))`, asked of `dir`, the directory
@@ -287,15 +303,15 @@ const STAT_PARALLEL: usize = 64;
 /// Every root's listing, read on whichever thread calls it, for
 /// `seed_listings` to hand to the picker's thread. The startup reads them
 /// while Herdr answers the snapshot request.
-pub fn prefetch_roots(roots: &[String], hidden: bool) -> Vec<(String, Vec<(String, bool)>)> {
-    let mut out: Vec<(String, Vec<(String, bool)>)> = Vec::new();
+pub fn prefetch_roots(roots: &[String], hidden: bool) -> Vec<Prefetched> {
+    let mut out: Vec<Prefetched> = Vec::new();
     for raw in roots {
         let directory = normalize(raw);
-        if directory.is_empty() || out.iter().any(|(known, _)| *known == directory) || !isdir(&directory) {
+        if directory.is_empty() || out.iter().any(|(known, _, _)| *known == directory) || !isdir(&directory) {
             continue;
         }
-        let listing = scan_subdirectories(&directory, hidden);
-        out.push((directory, listing));
+        let (listing, rest) = scan_subdirectories(&directory, hidden);
+        out.push((directory, listing, rest));
     }
     out
 }
@@ -335,13 +351,23 @@ fn ask_all(mut wanted: Vec<String>) -> FxHashMap<String, bool> {
 }
 
 /// Cache listings read by `prefetch_roots`, as `subdirectories` would have.
-pub fn seed_listings(listings: Vec<(String, Vec<(String, bool)>)>, hidden: bool) {
-    LISTINGS.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        for (directory, listing) in listings {
-            cache.entry((directory, hidden)).or_insert_with(|| Rc::new(listing));
+pub fn seed_listings(listings: Vec<Prefetched>, hidden: bool) {
+    for (directory, listing, rest) in listings {
+        let key = (directory, hidden);
+        if LISTINGS.with(|cache| cache.borrow().contains_key(&key)) {
+            continue;
         }
-    });
+        keep_listing(key, Rc::new(listing), rest);
+    }
+}
+
+/// A listing, and what its read left out, kept together: the rest is only
+/// ever paired with the listing from the same read.
+fn keep_listing(key: (String, bool), listing: Listing, rest: Option<Rest>) {
+    if let Some(rest) = rest {
+        RESTS.with(|cache| cache.borrow_mut().insert(key.clone(), rest));
+    }
+    LISTINGS.with(|cache| cache.borrow_mut().insert(key, listing));
 }
 
 /// The directory's subdirectories as (name, is_git) pairs, sorted by name.
@@ -350,9 +376,44 @@ pub fn subdirectories(directory: &str, hidden: bool) -> Listing {
     if let Some(found) = LISTINGS.with(|cache| cache.borrow().get(&key).cloned()) {
         return found;
     }
-    let result = Rc::new(scan_subdirectories(directory, hidden));
-    LISTINGS.with(|cache| cache.borrow_mut().insert(key, result.clone()));
+    let (listing, rest) = scan_subdirectories(directory, hidden);
+    let result = Rc::new(listing);
+    keep_listing(key, result.clone(), rest);
     result
+}
+
+/// A listed directory's contents, put together from its listing and what
+/// the listing left out, as `scan_contents` would read them. The listing is
+/// sorted the same way already, and the only folders it leaves out are
+/// hidden ones. Only a hidden name's sort key starts with a dot, so no
+/// hidden folder ties with a listed one, and merging the two sorted lists
+/// gives the order sorting them together would.
+fn listed_contents(folder: &str) -> Option<Contents> {
+    for hidden in [false, true] {
+        let key = (folder.to_string(), hidden);
+        let Some(rest) = RESTS.with(|cache| cache.borrow_mut().remove(&key)) else { continue };
+        let Some(listing) = LISTINGS.with(|cache| cache.borrow().get(&key).cloned()) else { continue };
+        let lowered = |name: &str| (pystr::lower(name), name.to_string());
+        let mut left_out: Vec<(String, String)> =
+            rest.iter().filter(|(_, is_dir)| *is_dir).map(|(name, _)| lowered(name)).collect();
+        left_out.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut dirs: Vec<String> = Vec::with_capacity(listing.len() + left_out.len());
+        let mut extra = left_out.into_iter().peekable();
+        for (name, _) in listing.iter() {
+            if extra.peek().is_some() {
+                let key = pystr::lower(name);
+                while let Some((_, hidden_name)) = extra.next_if(|(other, _)| *other < key) {
+                    dirs.push(hidden_name);
+                }
+            }
+            dirs.push(name.clone());
+        }
+        dirs.extend(extra.map(|(_, name)| name));
+        let mut files: Vec<String> = rest.into_iter().filter(|(_, is_dir)| !is_dir).map(|(name, _)| name).collect();
+        files.sort_by_cached_key(|name| pystr::lower(name));
+        return Some(Contents { dirs, files, readable: true });
+    }
+    None
 }
 
 fn scan_contents(folder: &str) -> Option<Contents> {
@@ -390,7 +451,7 @@ pub fn contents(folder: &str) -> Option<Rc<Contents>> {
     if let Some(found) = CONTENTS.with(|cache| cache.borrow().get(folder).cloned()) {
         return found;
     }
-    let found = scan_contents(folder).map(Rc::new);
+    let found = listed_contents(folder).or_else(|| scan_contents(folder)).map(Rc::new);
     CONTENTS.with(|cache| cache.borrow_mut().insert(folder.to_string(), found.clone()));
     found
 }
@@ -467,6 +528,7 @@ pub fn git_branch(folder: &str, listed: Option<&Contents>) -> Option<String> {
 /// Forget everything read off the filesystem. What the rescan key does.
 pub fn clear_cache() {
     LISTINGS.with(|cache| cache.borrow_mut().clear());
+    RESTS.with(|cache| cache.borrow_mut().clear());
     CONTENTS.with(|cache| cache.borrow_mut().clear());
     BRANCHES.with(|cache| cache.borrow_mut().clear());
     clear_resolved();
@@ -1034,12 +1096,21 @@ pub fn complete_path(query: &str, base: &str, hidden: bool, limit: usize) -> Vec
         ))));
     }
 
+    // Prefix matches come first, in the listing's order, and the list keeps
+    // `limit` rows: once prefix matches fill it, nothing further down the
+    // listing can make it, so the scan stops there rather than building a
+    // row for every folder in a big directory.
+    let room = limit.saturating_sub(rows.len());
     let folded = pystr::lower(&leaf);
     let leaf_len = leaf.chars().count();
     let term = Term::new(&leaf);
     let mut prefixed: Vec<Scored> = Vec::new();
     let mut fuzzy: Vec<(Scored, String)> = Vec::new();
     for (name, is_git) in subdirectories(&directory, hidden).iter() {
+        if prefixed.len() >= room {
+            fuzzy.clear();
+            break;
+        }
         let suggestion = || {
             Arc::new(Suggestion::with(pyos::join(&directory, name), name.clone(), SOURCE_PATH, String::new(), *is_git))
         };

@@ -68,7 +68,7 @@ fn out(text: &str) {
 }
 
 /// Each root's subdirectories, as `prefetch_roots` reads them.
-type Listings = Vec<(String, Vec<(String, bool)>)>;
+type Listings = Vec<paths::Prefetched>;
 /// zoxide's folders, with whether each is a folder and a checkout.
 type Frecent = (Option<Vec<String>>, FxHashMap<String, bool>);
 

@@ -131,6 +131,76 @@ fn git_folders_are_marked() {
     assert!(!marked("alpha"));
 }
 
+/// A directory listed for its folders is previewed from that same read: the
+/// contents must be the ones a fresh read gives, with hidden folders listed
+/// or not, files, symlinks, names that differ only in case (where the
+/// filesystem allows both) and names that sort before a dot. And it is not
+/// read a second time.
+#[test]
+fn a_listed_directory_previews_as_a_fresh_read_does() {
+    use std::os::unix::fs::symlink;
+    let tree = TempDir::with(&[
+        "Beta",
+        "beta",
+        "alpha",
+        ".hidden",
+        ".Hidden-b",
+        ".git",
+        "-dash",
+        "(paren",
+        "zeta/inner",
+        "café",
+        "Ωmega",
+    ]);
+    for file in ["file.txt", ".dotfile", "B-file", "b-file", "-early", "Ζ-last"] {
+        tree.touch(file, "");
+    }
+    symlink(tree.join("alpha"), tree.join("link-dir")).unwrap();
+    symlink(tree.join("file.txt"), tree.join("link-file")).unwrap();
+    symlink(tree.join("nowhere"), tree.join("dangling")).unwrap();
+    symlink(tree.join("alpha"), tree.join(".hidden-link")).unwrap();
+    let root = tree.path().to_string();
+    paths::clear_cache();
+    let fresh = paths::contents(&root).unwrap();
+    assert!(fresh.dirs.len() >= 10 && fresh.files.len() >= 7, "{fresh:?}");
+    for hidden in [false, true] {
+        paths::clear_cache();
+        paths::subdirectories(&root, hidden);
+        let ((), asked) = crate::lookups::counted(|| assert_eq!(*paths::contents(&root).unwrap(), *fresh, "{hidden}"));
+        assert_eq!(asked, 0, "read again, hidden {hidden}");
+        paths::clear_cache();
+        paths::seed_listings(paths::prefetch_roots(std::slice::from_ref(&root), hidden), hidden);
+        assert_eq!(*paths::contents(&root).unwrap(), *fresh, "prefetched, hidden {hidden}");
+    }
+    paths::clear_cache();
+}
+
+/// The scan stops once prefix matches fill the list, so a short list must be
+/// the long one cut short: whether prefix matches overflow it, fill it
+/// exactly, or leave room for fuzzy ones, and with the folder itself first.
+#[test]
+fn a_short_list_is_the_long_one_cut_short() {
+    let names: Vec<String> = (0..30)
+        .map(|index| match index % 3 {
+            0 => format!("ab-{index:02}"),
+            1 => format!("xab-{index:02}"),
+            _ => format!("a-x-b-{index:02}"),
+        })
+        .collect();
+    let tree = TempDir::with(&names.iter().map(String::as_str).collect::<Vec<_>>());
+    paths::clear_cache();
+    let root = tree.path();
+    for query in [format!("{root}/"), format!("{root}/a"), format!("{root}/ab"), format!("{root}/b")] {
+        let whole = complete_path(&query, root, false, usize::MAX);
+        assert!(whole.len() > 10, "{query}: {}", whole.len());
+        for limit in 0..=whole.len() + 1 {
+            let short = complete_path(&query, root, false, limit);
+            assert_eq!(short, whole[..limit.min(whole.len())], "{query} at {limit}");
+        }
+    }
+    paths::clear_cache();
+}
+
 // -- CompletionTextTest -------------------------------------------------------
 
 /// Home, and a root row under it. Holds the env lock, so a test elsewhere
