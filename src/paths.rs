@@ -269,7 +269,7 @@ fn scan_subdirectories(directory: &str, hidden: bool) -> (Vec<(String, bool)>, O
     // rather than from `/`: a quarter to a half cheaper, the deeper the root.
     let gits: Vec<bool> = crate::lookups::ask_many(names.len(), || {
         let opened = std::fs::File::open(directory).ok();
-        crate::par::map_chunks_from(&names, STAT_PARALLEL, |chunk| {
+        crate::par::map_chunks_from(&names, SIBLING_STAT_PARALLEL, |chunk| {
             chunk.iter().map(|name| git_inside(opened.as_ref(), directory, name)).collect()
         })
     });
@@ -299,6 +299,13 @@ fn git_inside(dir: Option<&std::fs::File>, directory: &str, name: &str) -> bool 
 /// than starting more. A stat costs microseconds, far more than a row's
 /// scoring, so the bar is lower than `par::MIN_PARALLEL`.
 const STAT_PARALLEL: usize = 64;
+
+/// `STAT_PARALLEL`, for paths inside one directory. On macOS, lookups in
+/// the same directory contend in the kernel, so more threads only cost
+/// more: at 4,000 folders, one thread asked every .git in 2.8 ms of wall and
+/// CPU time, four in 3.8 ms of wall and 14.5 of CPU. Linux walks paths
+/// without that lock, so there they are split as any others are.
+const SIBLING_STAT_PARALLEL: usize = if cfg!(target_os = "macos") { usize::MAX } else { STAT_PARALLEL };
 
 /// Every root's listing, read on whichever thread calls it, for
 /// `seed_listings` to hand to the picker's thread. The startup reads them
