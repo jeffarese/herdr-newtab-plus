@@ -154,6 +154,8 @@ fn start(extra: &[&str]) -> (Value, Vec<String>) {
     herdr.client().start_agent("a", "claude", "w1:p1", 30000, &extra).unwrap();
     let params = herdr.calls().pop().expect("a socket request").1;
 
+    // The fake `herdr` runs `dirname` from PATH, which other tests swap.
+    let _lock = env_lock();
     let bin = TempDir::new();
     bin.touch(
         "herdr",

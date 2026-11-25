@@ -100,12 +100,79 @@ pub fn can_skip_permissions(kind: &str, overrides: &[(String, Vec<String>)]) -> 
     !skip_permission_flags(kind, overrides).is_empty()
 }
 
-pub fn installed(kind: &str) -> bool {
-    let binaries: Vec<&str> = match KNOWN.iter().find(|(k, _)| *k == kind) {
+/// Where agent installers put their executables, under the home folder.
+///
+/// Looked in after PATH, because the PATH the picker gets is Herdr's server's,
+/// not your shell's. A server started over ssh, by `herdr --remote` or as a
+/// service never read the startup files that add `~/.local/bin` or
+/// `~/.npm-global/bin`, so an agent the new tab's shell starts fine would
+/// otherwise get no chip. Herdr starts the agent in that shell, not here, so
+/// finding it in one of these is enough.
+pub const HOME_BIN_DIRS: &[&str] = &[
+    ".local/bin",
+    ".claude/local",
+    ".npm-global/bin",
+    ".npm/bin",
+    ".bun/bin",
+    ".volta/bin",
+    ".deno/bin",
+    ".cargo/bin",
+    ".opencode/bin",
+    ".yarn/bin",
+    ".local/share/pnpm",
+    "Library/pnpm",
+    ".local/share/mise/shims",
+    ".asdf/shims",
+    "go/bin",
+    "bin",
+];
+
+/// nvm gives each Node version its own `bin`, where that version's `npm i -g`
+/// lands, so every one of them is looked in.
+const NVM_VERSIONS: &str = ".nvm/versions/node";
+
+/// HOME_BIN_DIRS and nvm's per-version folders, for this home. Empty without
+/// a HOME.
+pub fn home_bin_dirs() -> Vec<String> {
+    let home = match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() => home,
+        _ => return Vec::new(),
+    };
+    let mut dirs: Vec<String> = HOME_BIN_DIRS.iter().map(|dir| pyos::join(&home, dir)).collect();
+    if let Ok(entries) = std::fs::read_dir(pyos::join(&home, NVM_VERSIONS)) {
+        let mut versions: Vec<String> = entries
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        versions.sort();
+        for version in versions {
+            dirs.push(pyos::join(&pyos::join(&home, NVM_VERSIONS), &format!("{}/bin", version)));
+        }
+    }
+    dirs
+}
+
+fn binaries_of(kind: &str) -> Vec<&str> {
+    match KNOWN.iter().find(|(k, _)| *k == kind) {
         Some((_, binaries)) => binaries.to_vec(),
         None => vec![kind],
-    };
-    binaries.iter().any(|binary| pyos::which(binary).is_some())
+    }
+}
+
+/// Where this kind's executable is: on PATH, or else in one of `fallback`.
+pub fn locate(kind: &str, fallback: &[String]) -> Option<String> {
+    let binaries = binaries_of(kind);
+    binaries.iter().find_map(|binary| pyos::which(binary)).or_else(|| {
+        fallback.iter().find_map(|dir| {
+            binaries.iter().map(|binary| pyos::join(dir, binary)).find(|candidate| pyos::is_executable_file(candidate))
+        })
+    })
+}
+
+/// Whether this kind's executable is on PATH itself, not only in a folder
+/// `home_bin_dirs` adds.
+pub fn on_path(kind: &str) -> bool {
+    binaries_of(kind).iter().any(|binary| pyos::which(binary).is_some())
 }
 
 fn ordered(mut kinds: Vec<&'static str>) -> Vec<&'static str> {
@@ -125,10 +192,14 @@ pub fn available(configured: &Agents) -> Vec<Agent> {
         Agents::Listed(listed) => listed.iter().filter(|kind| is_known(kind)).cloned().collect(),
         Agents::Auto => {
             // One PATH walk per kind, and they do not depend on each other.
+            let fallback = home_bin_dirs();
+            let fallback = &fallback;
             let found: Vec<&'static str> = std::thread::scope(|scope| {
                 let handles: Vec<_> = KNOWN
                     .iter()
-                    .map(|(kind, _)| scope.spawn(move || if installed(kind) { Some(*kind) } else { None }))
+                    .map(|(kind, _)| {
+                        scope.spawn(move || if locate(kind, fallback).is_some() { Some(*kind) } else { None })
+                    })
                     .collect();
                 handles.into_iter().filter_map(|h| h.join().ok().flatten()).collect()
             });

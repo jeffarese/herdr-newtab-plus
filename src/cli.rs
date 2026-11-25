@@ -10,7 +10,7 @@
 use crate::agents::{self, Agent};
 use crate::app::{Choice, Picker};
 use crate::client::{HerdrClient, HerdrError};
-use crate::config::Config;
+use crate::config::{Agents, Config};
 use crate::fxhash::FxHashMap;
 use crate::icons;
 use crate::par;
@@ -192,6 +192,23 @@ fn preview_summary(config: &Config) -> &'static str {
     }
 }
 
+/// The chip row, with the agents auto detection found outside PATH marked,
+/// since that PATH is the likeliest reason an agent goes missing.
+fn agents_summary(chips: &[Agent], config: &Config) -> String {
+    let auto = matches!(config.agents, Agents::Auto);
+    chips
+        .iter()
+        .map(|chip| {
+            if auto && !chip.is_none() && !agents::on_path(&chip.kind) {
+                format!("{} (not on PATH)", chip.label)
+            } else {
+                chip.label.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn doctor(client: &mut HerdrClient, config: &Config) -> i32 {
     let recents = Recents::new(state_path());
     let chips = agents::available(&config.agents);
@@ -210,7 +227,7 @@ fn doctor(client: &mut HerdrClient, config: &Config) -> i32 {
         format!("create mode      {}", create_mode_line(config, &recents)),
         format!("roots            {}", config.roots.join(", ")),
         format!("zoxide           {}", if config.wants_zoxide(paths::zoxide_installed()) { "yes" } else { "no" }),
-        format!("agents           {}", chips.iter().map(|chip| chip.label.as_str()).collect::<Vec<_>>().join(", ")),
+        format!("agents           {}", agents_summary(&chips, config)),
         format!("skip permissions {}", if skip.is_empty() { "(none of the above)".to_string() } else { skip }),
         format!("agent icons      {}", icons_summary(config)),
         format!("preview          {}", preview_summary(config)),

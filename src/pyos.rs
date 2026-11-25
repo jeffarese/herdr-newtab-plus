@@ -431,7 +431,6 @@ pub fn normpath(path: &str) -> String {
 /// `shutil.which(name)` for a bare command name: the first file on PATH that
 /// exists, is executable and is not a directory.
 pub fn which(name: &str) -> Option<String> {
-    use std::os::unix::ffi::OsStrExt;
     let path = match std::env::var_os("PATH") {
         Some(value) => value.to_string_lossy().into_owned(),
         None => {
@@ -452,14 +451,21 @@ pub fn which(name: &str) -> Option<String> {
         }
         seen.push(directory);
         let candidate = join(directory, name);
-        let Ok(meta) = std::fs::metadata(&candidate) else { continue };
-        if meta.is_dir() {
-            continue;
-        }
-        let Ok(c_path) = std::ffi::CString::new(std::ffi::OsStr::new(&candidate).as_bytes()) else { continue };
-        if unsafe { libc::access(c_path.as_ptr(), libc::X_OK) } == 0 {
+        if is_executable_file(&candidate) {
             return Some(candidate);
         }
     }
     None
+}
+
+/// What `which` asks of each candidate: a file, not a directory, that this
+/// process may execute.
+pub fn is_executable_file(path: &str) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(meta) = std::fs::metadata(path) else { return false };
+    if meta.is_dir() {
+        return false;
+    }
+    let Ok(c_path) = std::ffi::CString::new(std::ffi::OsStr::new(path).as_bytes()) else { return false };
+    unsafe { libc::access(c_path.as_ptr(), libc::X_OK) == 0 }
 }

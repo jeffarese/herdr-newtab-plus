@@ -298,7 +298,7 @@ Optional, at `$(herdr plugin config-dir herdr-newtab-plus)/config.json`:
 | --- | --- | --- |
 | `roots` | `~/workspace`, `~/projects`, `~/src`, `~/code`, `~/dev`, `~/repos` | scanned one level deep; missing ones are skipped |
 | `create` | `"smart"` | where Enter lands before `ctrl+t` has ever been pressed: `"smart"`, `"tab"` or `"space"`. The remembered position wins once there is one |
-| `agents` | `"auto"` | detect what is installed, or an explicit list like `["claude", "codex"]` |
+| `agents` | `"auto"` | detect what is installed, on PATH or in the usual install folders under your home (`~/.local/bin`, `~/.npm-global/bin`, `~/.bun/bin`, nvm's, ...), or an explicit list like `["claude", "codex"]` |
 | `default_agent` | `"last"` | `"last"` reuses the folder's remembered agent; `"none"` always starts a shell; or name a kind |
 | `skip_permission_flags` | `{}` | what `ctrl+y` passes per agent kind, merged over the built-in table. `[]` disables the key for that kind |
 | `zoxide` | `"auto"` | on when zoxide is installed |
@@ -375,7 +375,11 @@ hold them fixed on every push:
 The picker is one short-lived process in a Herdr popup pane. It reads the whole
 session in a single `session.snapshot` call over Herdr's socket, and while
 Herdr answers it reads zoxide, the roots and the agents installed on PATH on
-threads of its own. zoxide's rows come after the recents and the open spaces,
+threads of its own. That PATH is the Herdr server's, which is often shorter
+than your shell's -- a server started over ssh, by `herdr --remote` or as a
+service never reads the files that add `~/.local/bin` -- so an agent missing
+from it is also looked for in the folders agent installers use under your
+home. `--doctor` marks an agent found there `(not on PATH)`. zoxide's rows come after the recents and the open spaces,
 so when those fill the screen and the list is full without zoxide, the first
 frame is drawn without waiting for it, and the list is finished before a key is
 read. When you press Enter it creates the tab or space before the popup closes.

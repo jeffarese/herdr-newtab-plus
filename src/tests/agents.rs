@@ -23,8 +23,27 @@ fn detected(binaries: &[&str]) -> Vec<String> {
         bin.touch(binary, "#!/bin/sh\n");
         std::fs::set_permissions(bin.join(binary), std::fs::Permissions::from_mode(0o755)).unwrap();
     }
+    let home = TempDir::new();
     let mut env = EnvVars::new();
-    env.set("PATH", bin.path());
+    env.set("PATH", bin.path()).set("HOME", home.path());
+    kinds(&available(&Agents::Auto))
+}
+
+/// `available("auto")` with an empty PATH and these executables at these
+/// paths under HOME, the way a Herdr server started over ssh sees a machine.
+fn detected_in_home(binaries: &[&str]) -> Vec<String> {
+    use std::os::unix::fs::PermissionsExt;
+    let _lock = env_lock();
+    let home = TempDir::new();
+    let empty = TempDir::new();
+    for binary in binaries {
+        let path = home.join(binary);
+        std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).unwrap();
+        std::fs::write(&path, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut env = EnvVars::new();
+    env.set("PATH", empty.path()).set("HOME", home.path());
     kinds(&available(&Agents::Auto))
 }
 
@@ -55,6 +74,57 @@ fn detection_only_offers_what_is_installed() {
 #[test]
 fn preferred_kinds_lead_and_the_rest_sort() {
     assert_eq!(detected(&["maki", "claude", "agy"]), vec!["", "claude", "agy", "maki"]);
+}
+
+#[test]
+fn detection_looks_in_the_home_bin_folders_path_lacks() {
+    assert_eq!(
+        detected_in_home(&[".local/bin/claude", ".npm-global/bin/codex", ".bun/bin/gemini"]),
+        vec!["", "claude", "codex", "gemini"]
+    );
+}
+
+#[test]
+fn detection_looks_in_every_nvm_node_version() {
+    assert_eq!(
+        detected_in_home(&[".nvm/versions/node/v20.1.0/bin/codex", ".nvm/versions/node/v22.3.0/bin/gemini"]),
+        vec!["", "codex", "gemini"]
+    );
+}
+
+#[test]
+fn a_file_that_cannot_run_is_not_an_agent() {
+    use std::os::unix::fs::PermissionsExt;
+    let _lock = env_lock();
+    let home = TempDir::new();
+    let empty = TempDir::new();
+    let path = home.join(".local/bin/claude");
+    std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).unwrap();
+    std::fs::write(&path, "").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::fs::create_dir_all(home.join(".local/bin/codex")).unwrap();
+    let mut env = EnvVars::new();
+    env.set("PATH", empty.path()).set("HOME", home.path());
+    assert_eq!(kinds(&available(&Agents::Auto)), vec![""]);
+}
+
+#[test]
+fn on_path_tells_path_from_the_home_folders() {
+    use std::os::unix::fs::PermissionsExt;
+    let _lock = env_lock();
+    let home = TempDir::new();
+    let bin = TempDir::new();
+    bin.touch("codex", "#!/bin/sh\n");
+    std::fs::set_permissions(bin.join("codex"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = home.join(".local/bin/claude");
+    std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).unwrap();
+    std::fs::write(&path, "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut env = EnvVars::new();
+    env.set("PATH", bin.path()).set("HOME", home.path());
+    assert!(agents::on_path("codex"));
+    assert!(!agents::on_path("claude"));
+    assert!(agents::locate("claude", &agents::home_bin_dirs()).is_some());
 }
 
 #[test]
