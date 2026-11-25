@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.2
+
+- `"agents": "auto"` finds agents the Herdr server's PATH does not reach. A
+  server started over ssh, by `herdr --remote` or as a service has a shorter
+  PATH than your shell, often without `~/.local/bin`, so on a remote machine
+  the picker could offer only the shell. An agent not on PATH is now also
+  looked for under your home, in `~/.local/bin`, `~/.claude/local`,
+  `~/.npm-global/bin`, `~/.npm/bin`, `~/.bun/bin`, `~/.volta/bin`,
+  `~/.deno/bin`, `~/.cargo/bin`, `~/.opencode/bin`, `~/.yarn/bin`, pnpm's,
+  mise's and asdf's shims, `~/go/bin`, `~/bin` and every nvm Node version's
+  `bin`. Herdr starts the agent in the new tab's shell, which has your PATH.
+  `--doctor` marks an agent found this way `(not on PATH)`.
+  ([#1](https://github.com/jeffarese/herdr-newtab-plus/issues/1))
+
 ## 0.2.1
 
 Faster, with the same screens, keys and state files: the parity suite still
